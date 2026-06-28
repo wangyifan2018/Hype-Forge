@@ -1,0 +1,261 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 6% 4%;
+    --foreground: 0 0% 93%;
+    --card: 240 4% 7%;
+    --card-foreground: 0 0% 93%;
+    --popover: 240 4% 7%;
+    --popover-foreground: 0 0% 93%;
+    --primary: 160 84% 39%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4% 14%;
+    --secondary-foreground: 0 0% 93%;
+    --muted: 240 4% 14%;
+    --muted-foreground: 240 5% 55%;
+    --accent: 187 85% 43%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 240 4% 16%;
+    --input: 240 4% 16%;
+    --ring: 160 84% 39%;
+    --radius: 0.375rem;
+
+    --terminal-bg: #0a0a0b;
+    --terminal-panel: #111113;
+    --terminal-border: #27272a;
+    --terminal-accent: #22c55e;
+    --terminal-muted: #71717a;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-terminal-bg text-foreground font-mono antialiased;
+  }
+}
+
+/* Terminal scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #52525b var(--terminal-panel);
+}
+
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--terminal-panel);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: #52525b;
+  border-radius: 3px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #71717a;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .typewriter-cursor::after {
+    content: "|";
+    @apply ml-0.5 animate-pulse text-terminal-accent;
+  }
+
+  .intel-radar-grid {
+    background-image:
+      linear-gradient(rgba(34, 197, 94, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 197, 94, 0.06) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .intel-radar-sweep {
+    background: conic-gradient(
+      from 0deg,
+      transparent 0deg,
+      rgba(34, 197, 94, 0.35) 42deg,
+      transparent 84deg
+    );
+    animation: intel-radar-sweep 2.8s linear infinite;
+    mask: radial-gradient(circle, transparent 42%, black 43%);
+    -webkit-mask: radial-gradient(circle, transparent 42%, black 43%);
+  }
+
+  .intel-radar-ring {
+    animation: intel-radar-ping 3s ease-out infinite;
+  }
+
+  .intel-platform-pulse {
+    animation: intel-platform-pulse 1.6s ease-in-out infinite;
+  }
+
+  .intel-insight-in {
+    animation: intel-insight-in 0.35s ease-out both;
+  }
+
+  .intel-phase-pulse {
+    animation: intel-phase-pulse 1.2s ease-in-out infinite;
+  }
+
+  .intel-source-active {
+    animation: intel-source-glow 1.6s ease-in-out infinite;
+  }
+
+  .intel-metric-card {
+    animation: intel-metric-in 0.4s ease-out both;
+  }
+
+  .intel-particle {
+    animation: intel-particle-orbit var(--orbit-duration, 8s) linear infinite;
+  }
+
+  .intel-heat-bar {
+    animation: intel-bar-grow 0.8s ease-out both;
+  }
+
+  .intel-radar-fill-anim {
+    animation: intel-radar-fill 0.6s ease-out both;
+  }
+
+  .intel-pulse-ring-anim {
+    animation: intel-pulse-ring 2s ease-in-out infinite;
+  }
+
+  .intel-float-up-anim {
+    animation: intel-float-up 0.5s ease-out both;
+  }
+}
+
+@keyframes intel-radar-sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes intel-radar-ping {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.85;
+    transform: scale(1.02);
+  }
+}
+
+@keyframes intel-platform-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+  50% {
+    box-shadow: 0 0 12px 0 rgba(34, 197, 94, 0.25);
+  }
+}
+
+@keyframes intel-insight-in {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes intel-phase-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    transform: scale(1);
+  }
+  50% {
+    box-shadow: 0 0 6px 2px rgba(34, 197, 94, 0.2);
+    transform: scale(1.3);
+  }
+}
+
+@keyframes intel-source-glow {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes intel-metric-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes intel-particle-orbit {
+  from {
+    transform: rotate(var(--orbit-start, 0deg)) translateX(var(--orbit-radius, 140px)) rotate(calc(-1 * var(--orbit-start, 0deg)));
+  }
+  to {
+    transform: rotate(calc(var(--orbit-start, 0deg) + 360deg)) translateX(var(--orbit-radius, 140px)) rotate(calc(-1 * (var(--orbit-start, 0deg) + 360deg)));
+  }
+}
+
+@keyframes intel-bar-grow {
+  from {
+    width: 0%;
+  }
+}
+
+@keyframes intel-radar-fill {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes intel-pulse-ring {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.15;
+  }
+}
+
+@keyframes intel-float-up {
+  0% {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

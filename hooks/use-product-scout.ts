@@ -1,0 +1,58 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import type {
+  IntelAutoScope,
+  IntelDiscoveryMode,
+} from "@/lib/forge/intel-discovery";
+import type { HotProductLead, HotTrendCard } from "@/lib/forge/types";
+
+export type ScoutRequest = {
+  categoryHint: string;
+  categoryLabel?: string;
+  selectedTrend?: HotTrendCard | null;
+  forceRefresh?: boolean;
+  discoveryMode?: IntelDiscoveryMode;
+  autoScope?: IntelAutoScope;
+};
+
+export function useProductScout() {
+  const [scouting, setScouting] = useState(false);
+  const [leads, setLeads] = useState<HotProductLead[]>([]);
+  const [scoutCached, setScoutCached] = useState(false);
+  const [searchedAt, setSearchedAt] = useState<string | null>(null);
+
+  const scout = useCallback(async (params: ScoutRequest, signal?: AbortSignal) => {
+    setScouting(true);
+    try {
+      const res = await fetch("/api/forge/dewu/scout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(params),
+        signal,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(
+          (err as { error?: string }).error ?? "爆款情报扫描失败"
+        );
+      }
+      const data = (await res.json()) as {
+        leads: HotProductLead[];
+        cached?: boolean;
+        searchedAt?: string;
+      };
+      setLeads(data.leads);
+      setScoutCached(Boolean(data.cached));
+      setSearchedAt(data.searchedAt ?? new Date().toISOString());
+      return data.leads;
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      throw error;
+    } finally {
+      setScouting(false);
+    }
+  }, []);
+
+  return { scouting, leads, scoutCached, searchedAt, scout, setLeads };
+}
