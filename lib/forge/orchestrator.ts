@@ -5,13 +5,14 @@ import {
   runViralBrief,
   runVisualPrompts,
   streamTextChunks,
+  type RunOptions,
 } from "@/lib/forge/service";
 import { ensureHashtagSection } from "@/lib/forge/copy-hashtags";
-import { mapDashScopeError } from "@/lib/ai/dashscope";
+import { mapLlmError } from "@/lib/ai/llm";
 import { resolveTrend } from "@/lib/forge/trend-resolve";
 import { STEP_LABELS } from "@/lib/forge/pipeline-labels";
 import { buildCriticRevisionPrompt, CRITIC_SYSTEM } from "@/lib/ai/prompts/critic";
-import { chatComplete } from "@/lib/ai/dashscope";
+import { chatComplete } from "@/lib/ai/llm";
 import type {
   CriticReport,
   ForgeInput,
@@ -90,7 +91,7 @@ async function runCriticRevision(
   brief: ProductBrief | null,
   viralBrief: ViralBrief | null,
   round: number,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<string> {
   const revisionPrompt = buildCriticRevisionPrompt(
     input,
@@ -105,24 +106,25 @@ async function runCriticRevision(
     [
       { role: "user", content: revisionPrompt },
     ],
-    { signal, system: CRITIC_SYSTEM }
+    { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model }
   );
   // 修订返回的是纯文案（非 JSON），直接提取
   return raw.trim();
 }
 
 function mapStepError(step: string, error: unknown): string {
-  const msg = error instanceof Error ? mapDashScopeError(error) : "未知错误";
+  const msg = error instanceof Error ? mapLlmError(error) : "未知错误";
   return `${STEP_LABELS[step as keyof typeof STEP_LABELS] ?? step}失败：${msg}`;
 }
 
 export async function* runForgePipeline(
   input: ForgeInput,
   imageDataUrls: string[] | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): AsyncGenerator<ForgeRunEvent> {
   const state: ForgeState = { input };
   const visionUrls = imageDataUrls?.filter((u) => u.trim().length > 0) ?? [];
+  const call = { signal: options?.signal, model: options?.model };
 
   try {
     let brief: ProductBrief | null = null;
@@ -136,7 +138,7 @@ export async function* runForgePipeline(
         level: "info",
       };
       try {
-        brief = await runVision(visionUrls, input, signal);
+        brief = await runVision(visionUrls, input, call);
         state.productBrief = brief;
         yield { type: "brief", data: brief };
         yield {
@@ -146,10 +148,15 @@ export async function* runForgePipeline(
           level: "success",
         };
       } catch (error) {
+        const message = mapStepError("vision", error);
+        // 识图失败不阻断流水线（降级为纯文本），但必须留痕 + 让前端显式提示
+        console.warn(
+          `[forge/pipeline] 识图失败，已降级为纯文本流程：${message}`
+        );
         yield {
           type: "log",
           step: "vision",
-          message: mapStepError("vision", error),
+          message: `${message}（已降级为纯文本流程，文案将不参考图片）`,
           level: "warn",
         };
       }
@@ -170,7 +177,7 @@ export async function* runForgePipeline(
     };
     let viralBrief;
     try {
-      viralBrief = await runViralBrief(input, brief, signal);
+      viralBrief = await runViralBrief(input, brief, call);
       state.viralBrief = viralBrief;
       yield { type: "viralBrief", data: viralBrief };
       yield {
@@ -193,7 +200,7 @@ export async function* runForgePipeline(
     };
     let visual;
     try {
-      visual = await runVisualPrompts(input, brief, viralBrief, signal);
+      visual = await runVisualPrompts(input, brief, viralBrief, call);
       state.visual = visual;
       yield { type: "prompts", data: visual };
       yield {
@@ -218,7 +225,7 @@ export async function* runForgePipeline(
     };
     let copyDraft: string;
     try {
-      copyDraft = await runCopyDraft(input, brief, visual, viralBrief, signal);
+      copyDraft = await runCopyDraft(input, brief, visual, viralBrief, call);
       state.copyDraft = copyDraft;
       yield {
         type: "log",
@@ -248,7 +255,7 @@ export async function* runForgePipeline(
 
     try {
       // Round 1: initial critique
-      critic = await runCritic(input, currentCopy, visual, brief, viralBrief, signal);
+      critic = await runCritic(input, currentCopy, visual, brief, viralBrief, call);
       critic.round = 1;
       scoreHistory.push(critic.scores);
       yield {
@@ -279,11 +286,11 @@ export async function* runForgePipeline(
             brief,
             viralBrief ?? null,
             round,
-            signal
+            call
           );
 
           // Re-critic the revised copy
-          critic = await runCritic(input, currentCopy, visual, brief, viralBrief ?? null, signal);
+          critic = await runCritic(input, currentCopy, visual, brief, viralBrief ?? null, call);
           critic.round = round;
           critic.scoredHistory = [...scoreHistory];
           scoreHistory.push(critic.scores);
@@ -366,7 +373,7 @@ export async function* runForgePipeline(
       };
     }
 
-    for await (const chunk of streamTextChunks(copyFinal, signal)) {
+    for await (const chunk of streamTextChunks(copyFinal, call.signal)) {
       yield { type: "delta", text: chunk };
     }
 
@@ -374,7 +381,7 @@ export async function* runForgePipeline(
     yield { type: "done" };
   } catch (error) {
     const message =
-      error instanceof Error ? mapDashScopeError(error) : "Pipeline failed";
+      error instanceof Error ? mapLlmError(error) : "Pipeline failed";
     if ((error as Error).name === "AbortError") {
       yield { type: "error", message: "已取消执行", phase: "abort" };
       return;

@@ -7,6 +7,7 @@ import {
 } from "@/lib/forge/image";
 import { filesToProductImages } from "@/lib/forge/image-client";
 import { formatAgentTime } from "@/lib/forge/agent-phases";
+import { DEFAULT_LLM_MODEL_ID, LLM_MODELS, resolveLlmModelId, type LlmModelOption } from "@/lib/ai/models";
 import { consumeSseStream } from "@/lib/forge/sse-client";
 import type {
   CriticReport,
@@ -38,7 +39,10 @@ export class ForgePipelineError extends Error {
 export function useForgePipeline() {
   const [status, setStatus] = useState<PipelineStatus>("idle");
   const [mode, setMode] = useState<ForgeMode>("mock");
-  const [model, setModel] = useState("qwen3.6-plus");
+  /** 服务端默认模型（DASHSCOPE_MODEL），UI 未显式选择时使用 */
+  const [defaultModel, setDefaultModel] = useState(DEFAULT_LLM_MODEL_ID);
+  /** UI 可选模型目录（由 /api/forge/health 下发，失败时用本地目录兜底） */
+  const [models, setModels] = useState<LlmModelOption[]>([...LLM_MODELS]);
   const [productBrief, setProductBrief] = useState<ProductBrief | null>(null);
   const [viralBrief, setViralBrief] = useState<ViralBrief | null>(null);
   const [visionWarning, setVisionWarning] = useState<string | null>(null);
@@ -79,10 +83,20 @@ export function useForgePipeline() {
   useEffect(() => {
     fetch("/api/forge/health")
       .then((r) => r.json())
-      .then((data: { mode: ForgeMode; model: string }) => {
-        setMode(data.mode);
-        setModel(data.model);
-      })
+      .then(
+        (data: {
+          mode: ForgeMode;
+          model?: string;
+          defaultModel?: string;
+          models?: LlmModelOption[];
+        }) => {
+          setMode(data.mode);
+          setDefaultModel(
+            resolveLlmModelId(data.defaultModel ?? data.model ?? DEFAULT_LLM_MODEL_ID)
+          );
+          if (data.models?.length) setModels(data.models);
+        }
+      )
       .catch(() => setMode("mock"));
   }, []);
 
@@ -103,7 +117,11 @@ export function useForgePipeline() {
   }, []);
 
   const execute = useCallback(
-    async (input: ForgeInput, imageFiles: File[] = []) => {
+    async (
+      input: ForgeInput,
+      imageFiles: File[] = [],
+      options?: { model?: string }
+    ) => {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -150,7 +168,7 @@ export function useForgePipeline() {
         const runRes = await fetch("/api/forge/run", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ input: payloadInput }),
+          body: JSON.stringify({ input: payloadInput, model: options?.model }),
           signal,
         });
 
@@ -249,7 +267,8 @@ export function useForgePipeline() {
   return {
     status,
     mode,
-    model,
+    defaultModel,
+    models,
     productBrief,
     viralBrief,
     visionWarning,

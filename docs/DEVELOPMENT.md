@@ -9,7 +9,7 @@ cp .env.example .env.local
 npm run dev:clean
 ```
 
-- **LIVE**：存在 `DASHSCOPE_API_KEY` 且 `FORGE_FORCE_MOCK` 不为 `true`（见 `lib/ai/dashscope.ts` `isLiveMode()`）。
+- **LIVE**：存在 `DASHSCOPE_API_KEY` 且 `FORGE_FORCE_MOCK` 不为 `true`（见 `lib/ai/llm.ts` `isLiveMode()`）。
 - **MOCK**：无 Key 或强制 Mock，流水线返回 `lib/forge/mock.ts` 示例数据。
 
 ## 如何改 Prompt
@@ -23,6 +23,18 @@ npm run dev:clean
 | Remix | `lib/ai/prompts/remix.ts` | `POST /api/forge/remix` |
 
 得物文案约束：仅 `## 标题` / `## 正文` / `## 话题标签`；链接不进正文。
+
+## 如何切换 / 新增模型
+
+模型目录：[lib/ai/models.ts](../lib/ai/models.ts)（客户端与服务端共用）。
+
+1. **切换默认模型**：改 `.env.local` 的 `DASHSCOPE_MODEL`（须命中目录，否则回落到目录默认值并打印 `[llm]` 告警）。
+2. **运行时选择**：左栏顶部下拉框 → 持久化到 `prefs.model`（zustand persist）→ 随每个请求的 `model` 字段下发。
+3. **新增模型**：在 `LLM_MODELS` 增加一项（同时更新 `LlmModelId` 联合类型）。
+   新模型必须同时支持**图片输入**与 **`enable_search` 联网搜索**，否则 Step3 识图、Step1 热点情报会降级。
+4. **调用链**：`model` 由 UI → API route（`llmModelSchema`）→ `lib/forge/service.ts` / `orchestrator.ts`（`RunOptions`）→ `lib/ai/llm.ts`（`resolveRequestModel`）。
+
+> 百炼 `enable_search` 只在**流式**模式下生效；非流式调用会静默忽略搜索参数。
 
 ## 如何改 Step3 UI
 

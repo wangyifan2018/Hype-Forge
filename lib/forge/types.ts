@@ -3,6 +3,13 @@ import { z } from "zod";
 export const platformSchema = z.enum(["xiaohongshu", "dewu"]);
 export type Platform = z.infer<typeof platformSchema>;
 
+/**
+ * 请求级模型选择字段。
+ * 合法性由 `lib/ai/models.ts` 目录判定；未知模型由服务端回落到默认模型，
+ * 不返回 400（避免前端持久化的旧模型名让整个接口不可用）。
+ */
+export const llmModelSchema = z.string().max(64).optional();
+
 export const trendLifecycleStageSchema = z.enum([
   "emerging",
   "rising",

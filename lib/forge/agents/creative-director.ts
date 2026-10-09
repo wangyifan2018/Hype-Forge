@@ -6,7 +6,7 @@
  * 一次 LLM 调用同时输出 visual + copy，共享心理学策略
  */
 
-import { chatComplete, isLiveMode } from "@/lib/ai/dashscope";
+import { chatComplete, isLiveMode } from "@/lib/ai/llm";
 import { DEWU_VISUAL_PRINCIPLES } from "@/lib/ai/prompts/visual";
 import {
   buildForgePromptContext,

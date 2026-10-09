@@ -36,6 +36,7 @@ import {
 import { WorkflowGuide } from "@/components/forge/workflow-guide";
 import type { PicklistItem } from "@/lib/forge/local-store";
 import { DEWU_TRENDS, GENERAL_TRENDS } from "@/lib/forge/trends";
+import type { LlmModelOption } from "@/lib/ai/models";
 import { DewuSearchHandoff } from "@/components/forge/dewu-search-handoff";
 import { PipelineTimeline } from "@/components/forge/pipeline-timeline";
 import { STEP_LABELS } from "@/lib/forge/pipeline-labels";
@@ -113,6 +114,8 @@ type InputPanelProps = {
   status: PipelineStatus;
   mode: ForgeMode;
   model: string;
+  onModelChange: (modelId: string) => void;
+  availableModels: LlmModelOption[];
   productBrief: ProductBrief | null;
   viralBrief?: ViralBrief | null;
   visionWarning: string | null;
@@ -191,6 +194,8 @@ export function InputPanel({
   status,
   mode,
   model,
+  onModelChange,
+  availableModels,
   productBrief,
   viralBrief,
   visionWarning,
@@ -250,9 +255,40 @@ export function InputPanel({
             得物卖家工作台
           </p>
         </div>
-        <Badge variant={mode === "live" ? "live" : "mock"}>
-          {mode === "live" ? `LIVE · ${model}` : "MOCK · offline"}
-        </Badge>
+        <div className="flex flex-col items-end gap-1.5">
+          <Badge variant={mode === "live" ? "live" : "mock"}>
+            {mode === "live" ? `LIVE · ${model}` : "MOCK · offline"}
+          </Badge>
+          <Select
+            value={model}
+            onValueChange={onModelChange}
+            disabled={availableModels.length === 0}
+          >
+            <SelectTrigger
+              className="h-6 w-[168px] text-[10px]"
+              aria-label="选择模型"
+            >
+              <SelectValue placeholder="选择模型" />
+            </SelectTrigger>
+            <SelectContent>
+              {availableModels.map((option) => (
+                <SelectItem
+                  key={option.id}
+                  value={option.id}
+                  className="text-[11px]"
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="max-w-[168px] text-right text-[9px] leading-tight text-terminal-muted">
+            {mode === "live"
+              ? (availableModels.find((o) => o.id === model)?.hint ??
+                "模型 · 影响全流程")
+              : "MOCK 模式：模型不生效"}
+          </p>
+        </div>
       </header>
 
       <div className="border-b border-terminal-border px-4 py-2">
@@ -509,7 +545,9 @@ export function InputPanel({
                   {(productBrief || visionWarning) && (
                     <div className="rounded-md border border-terminal-border bg-terminal-bg/50 p-3 text-xs">
                       <p className="mb-1 font-semibold text-terminal-muted">
-                        Vision Brief
+                        {productBrief
+                          ? "Vision Brief"
+                          : "Vision Brief · 已降级为纯文本"}
                       </p>
                       {visionWarning && (
                         <p className="mb-2 text-amber-400">{visionWarning}</p>

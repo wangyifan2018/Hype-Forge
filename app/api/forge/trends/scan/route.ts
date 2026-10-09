@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { runTrendScan } from "@/lib/forge/service";
-import { platformSchema } from "@/lib/forge/types";
+import { llmModelSchema, platformSchema } from "@/lib/forge/types";
 
 const bodySchema = z.object({
   platform: platformSchema,
@@ -10,6 +10,7 @@ const bodySchema = z.object({
   forceRefresh: z.boolean().optional(),
   discoveryMode: z.enum(["auto", "manual"]).optional(),
   autoScope: z.enum(["category", "open"]).optional(),
+  model: llmModelSchema,
 });
 
 export async function POST(request: Request) {
@@ -21,16 +22,18 @@ export async function POST(request: Request) {
       forceRefresh,
       discoveryMode,
       autoScope,
+      model,
     } = bodySchema.parse(await request.json());
-    const result = await runTrendScan(
+    const result = await runTrendScan({
       platform,
       categoryHint,
-      request.signal,
-      forceRefresh,
       categoryLabel,
-      discoveryMode ?? "manual",
-      autoScope ?? "category"
-    );
+      forceRefresh,
+      discoveryMode: discoveryMode ?? "manual",
+      autoScope: autoScope ?? "category",
+      signal: request.signal,
+      model,
+    });
     return NextResponse.json(result);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Trend scan failed";

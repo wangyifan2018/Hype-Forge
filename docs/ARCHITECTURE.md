@@ -3,7 +3,7 @@
 ## 系统边界
 
 - **前端**：Next.js 14 App Router（`app/page.tsx` → `ForgeDashboard` 三栏布局）
-- **AI**：阿里云 DashScope OpenAI 兼容 API（`lib/ai/dashscope.ts`）
+- **AI**：阿里云百炼 DashScope OpenAI 兼容 API（`lib/ai/llm.ts`）；默认模型 `deepseek-v4.1-flash`，可在 UI 切换（目录见 `lib/ai/models.ts`）
 - **持久化**：浏览器 `localStorage`（选品池、发帖历史、Step3 草稿、发帖清单）
 - **不做**：得物爬链/CPS、站内生图、真实情报 SSE（Scan/Scout 为前端 phase 模拟 + 后端联网）
 
@@ -40,7 +40,9 @@ flowchart LR
 |------|------|
 | `app/api/forge/` | HTTP API（run SSE、scan、scout、enrich、remix…） |
 | `lib/forge/orchestrator.ts` | 流水线编排与 SSE 事件 |
-| `lib/forge/service.ts` | DashScope 调用封装（所有系统提示词通过 `system` 选项传递） |
+| `lib/forge/service.ts` | 模型调用封装（所有系统提示词通过 `system` 选项传递；`model` 逐层下传） |
+| `lib/ai/models.ts` | 模型目录（客户端/服务端共用，UI 选择器数据源） |
+| `lib/ai/llm.ts` | 百炼 OpenAI 兼容客户端（`enable_search`、错误映射、模型解析） |
 | `lib/forge/types.ts` | Zod schema 单一事实来源 |
 | `lib/forge/form-schema.ts` | React Hook Form Zod schema 与 resolver |
 | `lib/forge/keyword-extractor.ts` | nodejieba 关键词提取（TF-IDF + 停用词过滤） |

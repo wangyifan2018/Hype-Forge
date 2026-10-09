@@ -4,6 +4,7 @@ import { runCopyStream } from "@/lib/forge/service";
 import type { StreamEvent } from "@/lib/forge/types";
 import {
   forgeInputSchema,
+  llmModelSchema,
   productBriefSchema,
   viralBriefSchema,
   visualPromptsSchema,
@@ -14,6 +15,7 @@ const bodySchema = z.object({
   productBrief: productBriefSchema.optional().nullable(),
   prompts: visualPromptsSchema.optional().nullable(),
   viralBrief: viralBriefSchema.optional().nullable(),
+  model: llmModelSchema,
 });
 
 export async function POST(request: Request) {
@@ -34,7 +36,7 @@ export async function POST(request: Request) {
         payload.productBrief ?? null,
         payload.prompts ?? null,
         payload.viralBrief ?? null,
-        signal
+        { signal, model: payload.model }
       )) {
         yield { type: "delta", text } satisfies StreamEvent;
       }

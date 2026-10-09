@@ -20,5 +20,5 @@ export async function runStrategyPlanner(
   params: StrategyPlannerInput
 ): Promise<ViralBrief> {
   const { input, brief, signal } = params;
-  return runViralBrief(input, brief, signal);
+  return runViralBrief(input, brief, { signal });
 }

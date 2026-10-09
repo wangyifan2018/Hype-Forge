@@ -32,6 +32,7 @@ interface ForgeStoreState {
   updatePrefs: (patch: Partial<WorkspacePrefs>) => void;
   setCategory: (category: WorkspaceCategory) => void;
   setDefaultStyle: (defaultStyle: ContentStyle) => void;
+  setModel: (model: string) => void;
 
   addToPicklist: (lead: HotProductLead) => PicklistItem;
   updatePicklistItem: (id: string, patch: Partial<PicklistItem>) => void;
@@ -63,6 +64,9 @@ export const useForgeStore = create<ForgeStoreState>()(
 
       setDefaultStyle: (defaultStyle) =>
         set((state) => ({ prefs: { ...state.prefs, defaultStyle } })),
+
+      setModel: (model) =>
+        set((state) => ({ prefs: { ...state.prefs, model } })),
 
       addToPicklist: (lead) => {
         const state = get();
@@ -170,7 +174,7 @@ export const useForgeStore = create<ForgeStoreState>()(
 // Use shallow equality to prevent unnecessary re-renders while
 // providing convenient grouped access to related state + actions.
 
-type PrefsSlice = Pick<ForgeStoreState, "prefs" | "updatePrefs" | "setCategory" | "setDefaultStyle">;
+type PrefsSlice = Pick<ForgeStoreState, "prefs" | "updatePrefs" | "setCategory" | "setDefaultStyle" | "setModel">;
 type PicklistSlice = Pick<ForgeStoreState, "picklist" | "addToPicklist" | "updatePicklistItem" | "removeFromPicklist" | "setVerifyChecked">;
 type PostedSlice = Pick<ForgeStoreState, "posted" | "markPosted" | "updateEngagement">;
 type PublishChecklistSlice = Pick<ForgeStoreState, "publishChecklist" | "setPublishCheck" | "setEngageTemplates" | "resetPublishChecklist" | "engageTemplates">;
@@ -182,6 +186,7 @@ export const usePrefsStore = (): PrefsSlice =>
       updatePrefs: s.updatePrefs,
       setCategory: s.setCategory,
       setDefaultStyle: s.setDefaultStyle,
+      setModel: s.setModel,
     }))
   );
 

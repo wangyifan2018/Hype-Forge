@@ -58,7 +58,7 @@ npm run start
 |------|------|------|
 | `DASHSCOPE_API_KEY` | 否* | 百炼控制台获取的 `sk-` 开头 Key；无则 Mock |
 | `DASHSCOPE_BASE_URL` | 否 | OpenAI 兼容端点，国内默认见 `.env.example` |
-| `DASHSCOPE_MODEL` | 否 | 默认 `qwen3.6-plus`（多模态 + 可联网） |
+| `DASHSCOPE_MODEL` | 否 | 服务端默认模型，默认 `deepseek-v4.1-flash`（多模态 + 可联网）；可选值见 `lib/ai/models.ts` |
 | `FORGE_FORCE_MOCK` | 否 | `true` 时即使有 Key 也走 Mock，省额度调试 UI |
 | `FORGE_TREND_QUERY` | 否 | 热点扫描默认关键词，如「2026世界杯 家居 潮品」 |
 
@@ -71,7 +71,8 @@ npm run start
 | 中国大陆（北京） | `https://dashscope.aliyuncs.com/compatible-mode/v1` |
 | 国际（新加坡等） | `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` |
 
-配置正确时，左栏顶部的状态徽标显示 **`LIVE · qwen3.6-plus`**；否则为 **`MOCK · offline`**。
+配置正确时，左栏顶部的状态徽标显示 **`LIVE · deepseek-v4.1-flash`**；否则为 **`MOCK · offline`**。
+徽标下方的下拉框可切换模型（DeepSeek V4.1 Flash / Qwen3.6 Plus），选择会持久化到浏览器，并在下一次 Scan / Execute / 补卖点 / 二创时生效。
 
 > **安全**：切勿使用 `NEXT_PUBLIC_` 前缀暴露 API Key，Key 仅在后端 API 路由中读取。
 
@@ -270,7 +271,8 @@ npm run dev:clean
 ### Q：Scan 或 Execute 报错 / 超时？
 
 - 核对 `DASHSCOPE_BASE_URL` 与账号地域一致
-- 模型是否已开通 `qwen3.6-plus`
+- 模型是否已开通（当前默认 `deepseek-v4.1-flash`；左栏下拉框或 `DASHSCOPE_MODEL` 指定）
+- 热点 Scan / 爆款检索降级时会弹出「已降级为示例数据」提示，并打印 `[forge/intel]` 服务端告警
 - 额度与 QPS 限制（429 时需稍后重试）
 
 ### Q：上传了图但没有 Vision Brief？

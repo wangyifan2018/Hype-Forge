@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { toast } from "sonner";
 import type {
   IntelAutoScope,
   IntelDiscoveryMode,
@@ -14,6 +15,8 @@ export type TrendScanRequest = {
   forceRefresh?: boolean;
   discoveryMode?: IntelDiscoveryMode;
   autoScope?: IntelAutoScope;
+  /** 本次扫描使用的模型（见 lib/ai/models.ts） */
+  model?: string;
 };
 
 export function useTrendScan() {
@@ -41,7 +44,15 @@ export function useTrendScan() {
         trends: HotTrendCard[];
         cached?: boolean;
         searchedAt?: string;
+        /** true = 服务端联网调用失败，返回的是示例数据 */
+        fallback?: boolean;
+        fallbackReason?: string;
       };
+      if (data.fallback) {
+        toast.warning(
+          `热点情报联网失败，已降级为示例数据${data.fallbackReason ? `：${data.fallbackReason}` : ""}`
+        );
+      }
       const sorted = [...data.trends].sort(
         (a, b) => b.heatScore - a.heatScore
       );

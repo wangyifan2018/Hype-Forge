@@ -22,7 +22,7 @@ export type AgentPhase = {
   /** 右侧雷达面板步骤标题 */
   label: string;
   delayMs: number;
-  /** 工具/模型名，如 "DashScope Qwen", "Web Search" */
+  /** 工具/模型名，如 "DashScope", "Web Search" */
   tool?: string;
   /** 数据源标识，如 "douyin", "xiaohongshu", "dewu" */
   source?: string;
@@ -87,7 +87,7 @@ const TREND_SCAN_CORE: AgentPhase[] = [
     label: "场景卡片",
     message: "Agent · 生成场景趋势卡片…",
     delayMs: 800,
-    tool: "Qwen-Max",
+    tool: "大模型归并",
     detail: "生成场景趋势卡并标注生命周期",
   },
   {

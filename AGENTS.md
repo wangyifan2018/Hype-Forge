@@ -27,6 +27,8 @@ npm run test
 
 | 需求 | 文件 |
 |------|------|
+| 模型目录 / 默认模型 | `lib/ai/models.ts`（默认 `deepseek-v4.1-flash`）；UI 选择器在 `input-panel.tsx` |
+| 换网关 / 联网搜索 / 错误映射 | `lib/ai/llm.ts`（百炼 OpenAI 兼容） |
 | Step3 表单 | `input-panel.tsx`, `forge-dashboard.tsx` |
 | 豆包 Prompt | `lib/ai/prompts/visual.ts`, `visual-normalize.ts` |
 | 视觉校验失败 | `visual-normalize.ts`（非 Key 问题） |

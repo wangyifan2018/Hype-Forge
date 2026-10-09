@@ -40,6 +40,11 @@ import {
   type IntelDiscoveryMode,
 } from "@/lib/forge/intel-discovery";
 import { inferWorkspaceContext } from "@/lib/forge/infer-workspace";
+import {
+  LLM_MODELS,
+  llmModelLabel,
+  resolveLlmModelId,
+} from "@/lib/ai/models";
 import { parseProductPaste } from "@/lib/forge/parse-product-paste";
 import { loadStep3Draft, saveStep3Draft } from "@/lib/forge/draft-store";
 import { getCategoryLabel, STYLE_OPTIONS } from "@/lib/forge/workspace-prefs";
@@ -96,7 +101,7 @@ export function ForgeDashboard() {
   >([]);
   const intelAgent = useAgentPhaseRunner();
 
-  const { prefs, updatePrefs, setCategory } = usePrefsStore();
+  const { prefs, updatePrefs, setCategory, setModel } = usePrefsStore();
   const {
     picklist,
     addToPicklist,
@@ -124,7 +129,8 @@ export function ForgeDashboard() {
   const {
     status,
     mode,
-    model,
+    defaultModel,
+    models,
     productBrief,
     viralBrief,
     visionWarning,
@@ -139,6 +145,12 @@ export function ForgeDashboard() {
     execute,
     cancel,
   } = useForgePipeline();
+
+  // 识图失败不阻断流水线（降级为纯文本），但必须显式告知用户，
+  // 否则「Execute 完成」会让人误以为文案参考了图片。
+  useEffect(() => {
+    if (visionWarning) toast.warning(visionWarning);
+  }, [visionWarning]);
 
   useEffect(() => {
     const draft = loadStep3Draft();
@@ -208,6 +220,25 @@ export function ForgeDashboard() {
   const intelDiscoveryMode: IntelDiscoveryMode =
     prefs.intelDiscoveryMode ?? "auto";
   const intelAutoScope = prefs.intelAutoScope ?? "category";
+
+  /** 模型：用户选择优先，其次服务端默认（health 下发的 DASHSCOPE_MODEL） */
+  const selectedModel = useMemo(
+    () => resolveLlmModelId(prefs.model ?? defaultModel),
+    [prefs.model, defaultModel]
+  );
+
+  const availableModels = useMemo(
+    () => (models.length ? models : [...LLM_MODELS]),
+    [models]
+  );
+
+  const handleModelChange = useCallback(
+    (modelId: string) => {
+      setModel(resolveLlmModelId(modelId));
+      toast.info(`已切换模型：${llmModelLabel(modelId)}（下次执行生效）`);
+    },
+    [setModel]
+  );
 
   const canRunManualIntel = useMemo(
     () =>
@@ -297,6 +328,7 @@ export function ForgeDashboard() {
                 forceRefresh,
                 discoveryMode: intelDiscoveryMode,
                 autoScope: scoutAutoScope,
+                model: selectedModel,
               },
               signal
             );
@@ -336,6 +368,7 @@ export function ForgeDashboard() {
       intelDiscoveryMode,
       intelAutoScope,
       mode,
+      selectedModel,
     ]
   );
 
@@ -383,6 +416,7 @@ export function ForgeDashboard() {
                 forceRefresh: true,
                 discoveryMode,
                 autoScope,
+                model: selectedModel,
               },
               signal
             );
@@ -405,6 +439,7 @@ export function ForgeDashboard() {
                 forceRefresh: true,
                 discoveryMode,
                 autoScope,
+                model: selectedModel,
               },
               signal
             );
@@ -444,6 +479,7 @@ export function ForgeDashboard() {
       updatePrefs,
       mode,
       setValue,
+      selectedModel,
     ]
   );
 
@@ -542,6 +578,7 @@ export function ForgeDashboard() {
           category: workspaceCtx.category,
           creativeHooks: activeLead?.creativeHooks,
           referenceCopy: parsed.referenceCopy ?? paste,
+          model: selectedModel,
         }),
       });
       if (!res.ok) {
@@ -564,7 +601,14 @@ export function ForgeDashboard() {
     } finally {
       setEnriching(false);
     }
-  }, [formValues.productPaste, formValues.productLink, workspaceCtx.category, activeLead, setValue]);
+  }, [
+    formValues.productPaste,
+    formValues.productLink,
+    workspaceCtx.category,
+    activeLead,
+    setValue,
+    selectedModel,
+  ]);
 
   const handleTrendSelect = useCallback(
     (id: string, context: HotTrendCard | null) => {
@@ -582,10 +626,9 @@ export function ForgeDashboard() {
     resetPublishChecklist();
 
     try {
-      await execute(
-        input,
-        productImages.map((i) => i.file)
-      );
+      await execute(input, productImages.map((i) => i.file), {
+        model: selectedModel,
+      });
       if (activePicklistId) {
         updatePicklistItem(activePicklistId, { status: "producing" });
       }
@@ -618,6 +661,7 @@ export function ForgeDashboard() {
     updatePicklistItem,
     resetPublishChecklist,
     lastError?.step,
+    selectedModel,
   ]);
 
   const handleRemix = useCallback(
@@ -635,6 +679,7 @@ export function ForgeDashboard() {
           copyText,
           input: lastInput,
           creativeConcept: prompts?.creativeConcept,
+          model: selectedModel,
         }),
       });
       if (!res.ok) {
@@ -652,7 +697,7 @@ export function ForgeDashboard() {
       }
       return null;
     },
-    [copyText, lastInput, prompts, setCopyText]
+    [copyText, lastInput, prompts, setCopyText, selectedModel]
   );
 
   const handleEngage = useCallback(async () => {
@@ -667,6 +712,7 @@ export function ForgeDashboard() {
         body: JSON.stringify({
           productName: lastInput.productName,
           affiliateLink: lastInput.affiliateLink,
+          model: selectedModel,
         }),
       });
       if (!res.ok) throw new Error("生成失败");
@@ -680,7 +726,7 @@ export function ForgeDashboard() {
     } catch {
       toast.error("评论话术生成失败");
     }
-  }, [lastInput, setEngageTemplates]);
+  }, [lastInput, setEngageTemplates, selectedModel]);
 
   const handleMarkPosted = useCallback(() => {
     const parsed = parseProductPaste(formValues.productPaste, formValues.productLink ?? "");
@@ -763,7 +809,9 @@ export function ForgeDashboard() {
         onProductImagesChange={setProductImages}
         status={status}
         mode={mode}
-        model={model}
+        model={selectedModel}
+        onModelChange={handleModelChange}
+        availableModels={availableModels}
         productBrief={productBrief}
         viralBrief={viralBrief}
         visionWarning={visionWarning}

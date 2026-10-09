@@ -15,14 +15,23 @@ Base URL（本地开发）：`http://localhost:3000`
 ```json
 {
   "mode": "live",
-  "model": "qwen3.6-plus"
+  "model": "deepseek-v4.1-flash",
+  "defaultModel": "deepseek-v4.1-flash",
+  "models": [
+    { "id": "deepseek-v4.1-flash", "label": "DeepSeek V4.1 Flash", "vendor": "DeepSeek", "hint": "默认 · 图文 + 联网 · 性价比" },
+    { "id": "qwen3.6-plus", "label": "Qwen3.6 Plus", "vendor": "Qwen", "hint": "备选 · 图文 + 联网" }
+  ]
 }
 ```
 
 | 字段 | 说明 |
 |------|------|
 | `mode` | `live` 有 Key 且未强制 Mock；`mock` 否则 |
-| `model` | 当前配置的 `DASHSCOPE_MODEL` |
+| `model` / `defaultModel` | 服务端默认模型（`DASHSCOPE_MODEL`，须命中 `lib/ai/models.ts` 目录） |
+| `models` | 模型目录，前端模型选择器的数据源 |
+
+> 几乎所有 POST 接口都接受可选的 `model` 字段（模型 id，见 `lib/ai/models.ts`）。
+> 缺省或非法值由服务端回落到默认模型，不返回 400。
 
 ---
 
@@ -245,7 +254,8 @@ curl -N -X POST http://localhost:3000/api/forge/run \
 
 | 路径 | 职责 |
 |------|------|
-| `lib/ai/dashscope.ts` | DashScope 客户端、`enable_search` |
+| `lib/ai/llm.ts` | 百炼 OpenAI 兼容客户端、`enable_search`、模型解析 |
+| `lib/ai/models.ts` | 模型目录（UI 选择器 + 服务端校验的单一事实来源） |
 | `lib/ai/prompts/*` | 各 Agent 系统 Prompt |
 | `lib/forge/orchestrator.ts` | 流水线编排 |
 | `lib/forge/service.ts` | 单步 AI 调用 |

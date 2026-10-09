@@ -34,6 +34,8 @@ export type ContentStyle = z.infer<typeof contentStyleSchema>;
 export const workspacePrefsSchema = z.object({
   category: workspaceCategorySchema.default("streetwear"),
   defaultStyle: contentStyleSchema.default("cool"),
+  /** 模型选择（见 lib/ai/models.ts 目录）；缺省时用服务端默认模型 */
+  model: z.string().optional(),
   trendQueryOverride: z.string().optional(),
   /** 情报扫描专用搜索词（如「AJ1 北卡蓝」「桌搭键盘」） */
   intelQuery: z.string().optional(),

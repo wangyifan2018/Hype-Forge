@@ -3,8 +3,8 @@ import {
   chatStream,
   chatWithImages,
   isLiveMode,
-  mapDashScopeError,
-} from "@/lib/ai/dashscope";
+  mapLlmError,
+} from "@/lib/ai/llm";
 import {
   buildCopywriterSystem,
   buildCopywriterUserPrompt,
@@ -94,6 +94,20 @@ import type {
   IntelDiscoveryMode,
 } from "@/lib/forge/intel-discovery";
 
+/** 服务层通用调用选项：模型由 UI 选择后随请求下发 */
+export type RunOptions = {
+  signal?: AbortSignal;
+  model?: string;
+};
+
+/** 情报类接口返回的降级元信息：fallback=true 表示当前是示例数据，非真实联网情报 */
+export type IntelFallbackMeta = {
+  cached: boolean;
+  searchedAt: string;
+  fallback?: boolean;
+  fallbackReason?: string;
+};
+
 export type ProductScoutParams = {
   categoryHint: string;
   categoryLabel?: string;
@@ -102,6 +116,18 @@ export type ProductScoutParams = {
   forceRefresh?: boolean;
   discoveryMode?: IntelDiscoveryMode;
   autoScope?: IntelAutoScope;
+  model?: string;
+};
+
+export type TrendScanParams = {
+  platform: Platform;
+  categoryHint?: string;
+  categoryLabel?: string;
+  signal?: AbortSignal;
+  forceRefresh?: boolean;
+  discoveryMode?: IntelDiscoveryMode;
+  autoScope?: IntelAutoScope;
+  model?: string;
 };
 
 function sortLeadsByPriority(leads: HotProductLead[]): HotProductLead[] {
@@ -119,7 +145,7 @@ function sortLeadsByPriority(leads: HotProductLead[]): HotProductLead[] {
 
 export async function runProductScout(
   params: ProductScoutParams
-): Promise<{ leads: HotProductLead[]; cached: boolean; searchedAt: string }> {
+): Promise<{ leads: HotProductLead[] } & IntelFallbackMeta> {
   const {
     categoryHint,
     categoryLabel,
@@ -128,6 +154,7 @@ export async function runProductScout(
     forceRefresh,
     discoveryMode = "manual",
     autoScope = "category",
+    model,
   } = params;
   const trendId = selectedTrend?.id;
 
@@ -162,7 +189,7 @@ export async function runProductScout(
           }),
         },
       ],
-      { json: true, search: true, signal, system: PRODUCT_SCOUT_SYSTEM }
+      { search: true, signal, system: PRODUCT_SCOUT_SYSTEM, model }
     );
     const json = extractJson(raw) as
       | { leads?: HotProductLead[] }
@@ -174,22 +201,37 @@ export async function runProductScout(
     );
     setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope);
     return { leads, cached: false, searchedAt: new Date().toISOString() };
-  } catch {
+  } catch (error) {
+    const reason = mapLlmError(error);
+    console.warn(
+      `[forge/intel] 爆款情报联网搜索失败，降级为示例数据：${reason}`
+    );
     const leads = sortLeadsByPriority(mockProductLeads());
-    setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope);
-    return { leads, cached: false, searchedAt: new Date().toISOString() };
+    // 不写入缓存：避免一次瞬时故障把示例数据缓存住，让恢复后的扫描继续拿到 mock
+    return {
+      leads,
+      cached: false,
+      searchedAt: new Date().toISOString(),
+      fallback: true,
+      fallbackReason: reason,
+    };
   }
 }
 
 export async function runTrendScan(
-  platform: Platform,
-  categoryHint?: string,
-  signal?: AbortSignal,
-  forceRefresh?: boolean,
-  categoryLabel?: string,
-  discoveryMode: IntelDiscoveryMode = "manual",
-  autoScope: IntelAutoScope = "category"
-): Promise<{ trends: HotTrendCard[]; cached: boolean; searchedAt: string }> {
+  params: TrendScanParams
+): Promise<{ trends: HotTrendCard[] } & IntelFallbackMeta> {
+  const {
+    platform,
+    categoryHint,
+    categoryLabel,
+    signal,
+    forceRefresh,
+    discoveryMode = "manual",
+    autoScope = "category",
+    model,
+  } = params;
+
   if (forceRefresh) clearCachedTrends(platform, categoryHint, discoveryMode, autoScope);
 
   const cached = getCachedTrends(platform, categoryHint, discoveryMode, autoScope);
@@ -218,7 +260,7 @@ export async function runTrendScan(
           ),
         },
       ],
-      { json: true, search: true, signal, system: TREND_RADAR_SYSTEM }
+      { search: true, signal, system: TREND_RADAR_SYSTEM, model }
     );
     const json = extractJson(raw) as { trends?: HotTrendCard[] } | HotTrendCard[];
     const trends = Array.isArray(json)
@@ -226,17 +268,27 @@ export async function runTrendScan(
       : hotTrendScanResponseSchema.parse(json).trends;
     setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope);
     return { trends, cached: false, searchedAt: new Date().toISOString() };
-  } catch {
+  } catch (error) {
+    const reason = mapLlmError(error);
+    console.warn(
+      `[forge/intel] 热点雷达联网搜索失败，降级为示例数据：${reason}`
+    );
     const trends = mockHotTrends(platform);
-    setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope);
-    return { trends, cached: false, searchedAt: new Date().toISOString() };
+    // 不写入缓存：避免一次瞬时故障把示例数据缓存住，让恢复后的扫描继续拿到 mock
+    return {
+      trends,
+      cached: false,
+      searchedAt: new Date().toISOString(),
+      fallback: true,
+      fallbackReason: reason,
+    };
   }
 }
 
 export async function runVision(
   imageDataUrls: string | string[],
   input?: ForgeInput,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<ProductBrief> {
   const urls = (
     Array.isArray(imageDataUrls) ? imageDataUrls : [imageDataUrls]
@@ -254,7 +306,7 @@ export async function runVision(
   }
 
   if (!isLiveMode()) {
-    await delay(500, signal);
+    await delay(500, options?.signal);
     return mockProductBrief(fallbackInput);
   }
 
@@ -273,21 +325,33 @@ export async function runVision(
     const raw = await chatWithImages(
       `${VISION_SYSTEM}\n\n${buildVisionUserPrompt(urls.length, keywords)}`,
       urls,
-      { json: true, signal }
+      { signal: options?.signal, model: options?.model }
     );
-    return productBriefSchema.parse(extractJson(raw));
+
+    let json: unknown;
+    try {
+      json = extractJson(raw);
+    } catch {
+      throw new Error("识图返回内容不是合法 JSON，可重试或换更清晰的主图");
+    }
+
+    const parsed = productBriefSchema.safeParse(json);
+    if (!parsed.success) {
+      throw new Error("识图返回结构不符合契约，可重试或换更清晰的主图");
+    }
+    return parsed.data;
   } catch (error) {
-    throw new Error(mapDashScopeError(error));
+    throw new Error(mapLlmError(error));
   }
 }
 
 export async function runViralBrief(
   input: ForgeInput,
   brief?: ProductBrief | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<ViralBrief> {
   if (!isLiveMode()) {
-    await delay(600, signal);
+    await delay(600, options?.signal);
     return mockViralBrief(input);
   }
 
@@ -299,7 +363,7 @@ export async function runViralBrief(
           content: buildViralPlannerUserPrompt(input, brief),
         },
       ],
-      { json: true, signal, system: VIRAL_PLANNER_SYSTEM }
+      { signal: options?.signal, system: VIRAL_PLANNER_SYSTEM, model: options?.model }
     );
     const parsed = viralBriefSchema.parse(extractJson(raw));
     
@@ -309,8 +373,11 @@ export async function runViralBrief(
     }
     
     return parsed;
-  } catch {
-    // 策划失败不阻塞流水线，返回 mock 兜底
+  } catch (error) {
+    // 策划失败不阻塞流水线，返回 mock 兜底（显式告警，便于区分"用了兜底"与"真出结果"）
+    console.warn(
+      `[forge/pipeline] 爆款策划失败，使用兜底简报：${mapLlmError(error)}`
+    );
     return mockViralBrief(input);
   }
 }
@@ -319,10 +386,10 @@ export async function runVisualPrompts(
   input: ForgeInput,
   brief?: ProductBrief | null,
   viralBrief?: ViralBrief | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<VisualPrompts> {
   if (!isLiveMode()) {
-    await delay(700, signal);
+    await delay(700, options?.signal);
     return normalizeVisualPrompts(
       mockVisualPrompts(input, brief) as unknown as Record<string, unknown>
     );
@@ -336,13 +403,13 @@ export async function runVisualPrompts(
           content: buildVisualUserPrompt(input, brief, viralBrief),
         },
       ],
-      { json: true, signal, system: VISUAL_SYSTEM }
+      { signal: options?.signal, system: VISUAL_SYSTEM, model: options?.model }
     );
     return normalizeVisualPrompts(
       extractJson(raw) as Record<string, unknown>
     );
   } catch (error) {
-    throw new Error(mapDashScopeError(error));
+    throw new Error(mapLlmError(error));
   }
 }
 
@@ -351,10 +418,10 @@ export async function runCopyDraft(
   brief?: ProductBrief | null,
   prompts?: VisualPrompts | null,
   viralBrief?: ViralBrief | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<string> {
   if (!isLiveMode()) {
-    await delay(600, signal);
+    await delay(600, options?.signal);
     return mockCopyMarkdown(input);
   }
 
@@ -366,11 +433,15 @@ export async function runCopyDraft(
           content: buildCopywriterUserPrompt(input, brief, prompts, viralBrief),
         },
       ],
-      { signal, system: buildCopywriterSystem(input, viralBrief) }
+      {
+        signal: options?.signal,
+        system: buildCopywriterSystem(input, viralBrief),
+        model: options?.model,
+      }
     );
     return cleanCopyDraft(raw);
   } catch (error) {
-    throw new Error(mapDashScopeError(error));
+    throw new Error(mapLlmError(error));
   }
 }
 
@@ -380,10 +451,10 @@ export async function runCritic(
   visual: VisualPrompts,
   brief?: ProductBrief | null,
   viralBrief?: ViralBrief | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<CriticReport> {
   if (!isLiveMode()) {
-    await delay(500, signal);
+    await delay(500, options?.signal);
     return {
       scores: {
         hook: 85,
@@ -421,11 +492,11 @@ export async function runCritic(
           content: buildCriticUserPrompt(input, copyDraft, visual, brief, viralBrief),
         },
       ],
-      { json: true, signal, system: CRITIC_SYSTEM }
+      { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model }
     );
     return criticReportSchema.parse(extractJson(raw));
   } catch (error) {
-    throw new Error(mapDashScopeError(error));
+    throw new Error(mapLlmError(error));
   }
 }
 
@@ -434,11 +505,11 @@ export async function* runCopyStream(
   brief?: ProductBrief | null,
   prompts?: VisualPrompts | null,
   viralBrief?: ViralBrief | null,
-  signal?: AbortSignal
+  options?: RunOptions
 ): AsyncGenerator<string> {
   if (!isLiveMode()) {
     const text = mockCopyMarkdown(input);
-    yield* mockCopyStream(text, signal);
+    yield* mockCopyStream(text, options?.signal);
     return;
   }
 
@@ -450,11 +521,14 @@ export async function* runCopyStream(
           content: buildCopywriterUserPrompt(input, brief, prompts, viralBrief),
         },
       ],
-      signal,
-      buildCopywriterSystem(input, viralBrief)
+      {
+        signal: options?.signal,
+        system: buildCopywriterSystem(input, viralBrief),
+        model: options?.model,
+      }
     );
   } catch (error) {
-    throw new Error(mapDashScopeError(error));
+    throw new Error(mapLlmError(error));
   }
 }
 
@@ -472,10 +546,10 @@ export async function runProductEnrich(
     creativeHooks?: string[];
     referenceCopy?: string;
   },
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<ProductEnrichResponse> {
   if (!isLiveMode()) {
-    await delay(400, signal);
+    await delay(400, options?.signal);
     return {
       sellingPoints: `${params.productName}：质感在线，百搭好搭，得物入手靠谱。`,
       styleTags: ["酷感直给"],
@@ -487,7 +561,7 @@ export async function runProductEnrich(
     [
       { role: "user", content: buildProductEnrichUserPrompt(params) },
     ],
-    { json: true, signal, system: PRODUCT_ENRICH_SYSTEM }
+    { signal: options?.signal, system: PRODUCT_ENRICH_SYSTEM, model: options?.model }
   );
   return productEnrichResponseSchema.parse(extractJson(raw));
 }
@@ -500,10 +574,10 @@ export async function runRemix(
     creativeConcept?: string;
     angle?: string;
   },
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<{ copyText?: string; titles?: string[] }> {
   if (!isLiveMode()) {
-    await delay(400, signal);
+    await delay(400, options?.signal);
     if (params.remixType === "regenerate_titles") {
       return {
         titles: [
@@ -520,7 +594,7 @@ export async function runRemix(
     [
       { role: "user", content: buildRemixUserPrompt(params) },
     ],
-    { json: true, signal, system: REMIX_SYSTEM }
+    { signal: options?.signal, system: REMIX_SYSTEM, model: options?.model }
   );
   const json = extractJson(raw) as {
     copyText?: string;
@@ -531,10 +605,10 @@ export async function runRemix(
 
 export async function runEngage(
   params: { productName: string; affiliateLink?: string },
-  signal?: AbortSignal
+  options?: RunOptions
 ): Promise<{ templates: string[]; replyStrategies?: EngageReplyStrategy[] }> {
   if (!isLiveMode()) {
-    await delay(300, signal);
+    await delay(300, options?.signal);
     return {
       templates: [
         "链接在文末好物区，点开就能看～",
@@ -571,7 +645,7 @@ export async function runEngage(
         }),
       },
     ],
-    { json: true, signal, system: ENGAGE_SYSTEM }
+    { signal: options?.signal, system: ENGAGE_SYSTEM, model: options?.model }
   );
   const parsed = engageResponseSchema.parse(extractJson(raw));
   return {

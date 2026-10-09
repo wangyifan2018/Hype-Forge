@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { runProductScout } from "@/lib/forge/service";
-import { hotTrendCardSchema } from "@/lib/forge/types";
+import { hotTrendCardSchema, llmModelSchema } from "@/lib/forge/types";
 
 const bodySchema = z.object({
   categoryHint: z.string().optional(),
@@ -10,6 +10,7 @@ const bodySchema = z.object({
   forceRefresh: z.boolean().optional(),
   discoveryMode: z.enum(["auto", "manual"]).optional(),
   autoScope: z.enum(["category", "open"]).optional(),
+  model: llmModelSchema,
 });
 
 export async function POST(request: Request) {
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
       discoveryMode: body.discoveryMode ?? "manual",
       autoScope: body.autoScope ?? "category",
       signal: request.signal,
+      model: body.model,
     });
     return NextResponse.json(result);
   } catch (error) {

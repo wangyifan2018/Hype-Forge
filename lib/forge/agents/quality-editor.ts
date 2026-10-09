@@ -11,7 +11,7 @@
 
 import { runCritic } from "@/lib/forge/service";
 import { buildCriticRevisionPrompt, CRITIC_SYSTEM } from "@/lib/ai/prompts/critic";
-import { chatComplete } from "@/lib/ai/dashscope";
+import { chatComplete } from "@/lib/ai/llm";
 import type {
   CriticReport,
   ForgeInput,
@@ -105,7 +105,7 @@ export async function runQualityEditor(
   let round = 0;
 
   // 初始审稿
-  critic = await runCritic(input, currentCopy, visual, brief, viralBrief, signal);
+  critic = await runCritic(input, currentCopy, visual, brief, viralBrief, { signal });
   critic.round = 1;
   scoreHistory.push(critic.scores);
   round = 1;
@@ -132,7 +132,7 @@ export async function runQualityEditor(
       );
 
       // 重新审稿
-      critic = await runCritic(input, currentCopy, visual, brief, viralBrief ?? null, signal);
+      critic = await runCritic(input, currentCopy, visual, brief, viralBrief ?? null, { signal });
       critic.round = round;
       critic.scoredHistory = [...scoreHistory];
       scoreHistory.push(critic.scores);
