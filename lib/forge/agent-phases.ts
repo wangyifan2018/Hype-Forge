@@ -22,7 +22,7 @@ export type AgentPhase = {
   /** 右侧雷达面板步骤标题 */
   label: string;
   delayMs: number;
-  /** 工具/模型名，如 "DashScope", "Web Search" */
+  /** 工具/模型名，如 "DashScope", "联网归纳" */
   tool?: string;
   /** 数据源标识，如 "douyin", "xiaohongshu", "dewu" */
   source?: string;
@@ -50,29 +50,29 @@ const TREND_SCAN_CORE: AgentPhase[] = [
   {
     id: "search_douyin",
     label: "抖音信号",
-    message: "Agent · 采集抖音热搜与种草话题…",
+    message: "Agent · 联网归纳抖音相关公开讨论…",
     delayMs: 700,
-    tool: "Web Search",
+    tool: "联网归纳",
     source: "douyin",
-    detail: "抓取抖音热搜与种草话题",
+    detail: "从公开讨论中归纳抖音相关信号",
   },
   {
     id: "search_xhs",
     label: "小红书",
-    message: "Agent · 归纳小红书笔记趋势…",
+    message: "Agent · 联网归纳小红书相关笔记话题…",
     delayMs: 650,
-    tool: "Web Search",
+    tool: "联网归纳",
     source: "xiaohongshu",
     detail: "归纳小红书爆款笔记体与话题",
   },
   {
     id: "search_dewu",
     label: "得物社区",
-    message: "Agent · 扫描得物社区场景与话题…",
+    message: "Agent · 联网归纳得物社区场景与话题…",
     delayMs: 600,
-    tool: "Web Search",
+    tool: "联网归纳",
     source: "dewu",
-    detail: "扫描得物社区场景与挑战赛",
+    detail: "归纳得物社区可搜场景与话题",
   },
   {
     id: "cluster_topics",
@@ -124,7 +124,7 @@ export const SCOUT_PRODUCT_PHASES: AgentPhase[] = [
     label: "检索爆款",
     message: "Agent · 联网检索高热单品方向…",
     delayMs: 900,
-    tool: "Web Search",
+    tool: "联网归纳",
     detail: "检索高热单品方向与搜索词",
   },
   {

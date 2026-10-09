@@ -91,3 +91,32 @@ describe("parseDewuPublish", () => {
     expect(result.hashtags).toContain("#得物球鞋");
   });
 });
+
+describe("标题归一化（得物标题必须单行）", () => {
+  it("多候选标题 + --- 分隔只取第一条", () => {
+    const parsed = parseDewuPublish(
+      [
+        "## 标题",
+        "3 天通勤实测｜北卡蓝真的绝了（数字冲击，评分 97）",
+        "---",
+        "北卡蓝上脚 | 谁懂啊（情绪共鸣，评分 90）",
+        "",
+        "## 正文",
+        "最近入手了这双鞋，拿到手上脚试了三天。",
+        "",
+        "## 话题标签",
+        "#球鞋穿搭 #通勤鞋 #得物好物",
+      ].join("\n")
+    );
+    expect(parsed.title).toBe("3 天通勤实测｜北卡蓝真的绝了");
+    expect(parsed.title).not.toContain("---");
+    expect(parsed.title).not.toContain("评分");
+  });
+
+  it("超长标题会截断", () => {
+    const long = "这是一条非常长的标题".repeat(6);
+    const parsed = parseDewuPublish(`## 标题\n${long}\n\n## 正文\n正文内容`);
+    expect(parsed.title.length).toBeLessThanOrEqual(31);
+    expect(parsed.title.endsWith("…")).toBe(true);
+  });
+});

@@ -45,7 +45,7 @@ export async function POST(request: Request) {
       const message = error instanceof Error ? error.message : "Stream failed";
       yield { type: "error", message } satisfies StreamEvent;
     }
-  });
+  }, request.signal);
 
   return new Response(stream, {
     headers: {

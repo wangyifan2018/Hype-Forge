@@ -27,6 +27,35 @@ function stripStructureTags(text: string): string {
     .trim();
 }
 
+/**
+ * 标题归一化。
+ * copywriter 在没有标题候选时被要求"输出 3 个候选标题（用 --- 分隔）"，
+ * 模型可能真的把多行候选写进 ## 标题；得物标题是单行字段，
+ * 这里只取第一条有效行，并去掉候选分隔线与评分注记、限制长度。
+ */
+function normalizeTitle(raw: string): string {
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .filter((line) => !/^-{2,}$/.test(line))
+    .map((line) =>
+      line
+        // 只去掉列表序号/项目符号（"1. "、"- "），不要吃掉标题开头本身的数字（"3 天通勤实测"）
+        .replace(/^\s*(?:\d+[.、)]|[-*•])\s+/, "")
+        .replace(/\*\*/g, "")
+        .replace(/（[^）]*评分[^）]*）/g, "")
+        .replace(/\([^)]*评分[^)]*\)/g, "")
+        .trim()
+    )
+    .filter((line) => line.length > 0);
+
+  const first = lines[0] ?? "";
+  const title = first.replace(/^#+\s*/, "").trim();
+  // 得物标题建议 20 字内，超长截断避免整段进标题框
+  return title.length > 30 ? `${title.slice(0, 30)}…` : title;
+}
+
 export function parseDewuPublish(copy: string): DewuPublishParsed {
   let title = extractSection(copy, "标题");
   let body = extractSection(copy, "正文");
@@ -71,7 +100,7 @@ export function parseDewuPublish(copy: string): DewuPublishParsed {
   const hashtags = extractHashtags(hashtagsText || copy);
 
   return {
-    title: title.replace(/^#+\s*/, "").trim(),
+    title: normalizeTitle(title),
     body: body.trim(),
     hashtagsText: hashtags.join(" "),
     hashtags,
