@@ -162,6 +162,8 @@ export const learnContextSchema = z.object({
   iclBlock: z.string().max(2000),
   topFramework: z.string().optional(),
   sampleCount: z.number().int().min(0),
+  /** 从卖家真实选择（Remix/挑标题）学到的偏好，命中阈值后才注入 */
+  preferenceHints: z.array(z.string().max(120)).max(8).optional(),
 });
 
 export type LearnContext = z.infer<typeof learnContextSchema>;

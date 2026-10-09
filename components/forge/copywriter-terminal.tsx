@@ -52,6 +52,8 @@ type CopywriterTerminalProps = {
     mustFix?: string[]
   ) => Promise<string | string[] | null>;
   onCopyTextChange: (text: string) => void;
+  /** 用户从候选里挑了哪条标题（用于学习标题偏好） */
+  onTitleChosen?: (chosen: string, alternatives: string[]) => void;
   posted: PostedRecord[];
   onMarkPosted: () => void;
   onReloadPosted: (record: PostedRecord) => void;
@@ -116,6 +118,7 @@ export function CopywriterTerminal({
   onGenerateEngage,
   onRemix,
   onCopyTextChange,
+  onTitleChosen,
   posted,
   onMarkPosted,
   onReloadPosted,
@@ -477,6 +480,7 @@ export function CopywriterTerminal({
                     size="sm"
                     className="h-auto max-w-full whitespace-normal text-left text-[9px]"
                     onClick={() => {
+                      onTitleChosen?.(title, titleOptions);
                       onCopyTextChange(replaceMarkdownTitle(copyText, title));
                       setTitleOptions([]);
                       toast.success("标题已替换");

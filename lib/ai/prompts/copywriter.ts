@@ -131,7 +131,17 @@ ${viralBrief.psychologyAlignment ? `心理对齐：${viralBrief.psychologyAlignm
         }`
       : "";
 
-  return `${rtfX}${strategyBlock}${learnBlock}\n\n不要 JSON 包裹，直接输出 Markdown。`;
+  // 卖家偏好来自他自己的操作（多次点「更短」、总是挑更短的标题…），
+  // 属于软约束：与硬性约束冲突时以硬性约束为准
+  const prefs = input.learnContext?.preferenceHints ?? [];
+  const prefBlock =
+    prefs.length > 0
+      ? `\n\n【卖家偏好（来自你自己的改稿选择）】\n${prefs
+          .map((p) => `- ${p}`)
+          .join("\n")}\n以上为软偏好，若与硬性约束或合规要求冲突，以硬性约束为准。`
+      : "";
+
+  return `${rtfX}${strategyBlock}${learnBlock}${prefBlock}\n\n不要 JSON 包裹，直接输出 Markdown。`;
 }
 
 export function buildCopywriterUserPrompt(

@@ -218,6 +218,72 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
     ]);
   });
 
+  it("点 Remix 选项会记入改稿偏好画像", async () => {
+    // 用带 mustFix 的快照让折叠区自动展开，从而看到 Remix 选项
+    localStorage.setItem(
+      "hype-forge:last-run",
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        input: {
+          trendId: "dewu-sneaker-heat",
+          productName: "AJ1",
+          sellingPoints: "749",
+          platform: "dewu",
+        },
+        productBrief: null,
+        viralBrief: null,
+        prompts: null,
+        promptsOptimized: false,
+        copyText: "## 标题\n标题\n\n## 正文\n正文\n\n## 话题标签\n#好物",
+        critic: {
+          scores: { hook: 70, emotion: 70, platformFit: 70, visualAlign: 70 },
+          mustFix: ["结构（必须改）：缺少 ## 话题标签 小节"],
+        },
+      })
+    );
+
+    render(<ForgeDashboard />);
+    fireEvent.click(await screen.findByText("更短"));
+
+    await waitFor(() => {
+      const raw = localStorage.getItem("hype-forge:preferences");
+      expect(raw).toBeTruthy();
+      expect(JSON.parse(raw!).counts["remix.shorter"]).toBe(1);
+    });
+  });
+
+  it("偏好达到阈值后会随 Execute 下发（注入文案 prompt）", async () => {
+    localStorage.setItem(
+      "hype-forge:preferences",
+      JSON.stringify({
+        version: 1,
+        counts: { "remix.shorter": 2 },
+        samples: 2,
+        lastUpdatedAt: new Date().toISOString(),
+      })
+    );
+
+    render(<ForgeDashboard />);
+    fireEvent.click(screen.getByRole("button", { name: /你的商品素材/ }));
+    const paste = document.querySelector<HTMLTextAreaElement>(
+      'textarea[name="productPaste"]'
+    )!;
+    fireEvent.change(paste, {
+      target: { value: "AJ1 北卡蓝 白蓝配色\n到手 749，码数偏小半码，适合通勤" },
+    });
+    const execute = await screen.findByRole("button", {
+      name: /Execute Forge Pipeline/i,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fireEvent.click(execute);
+
+    await waitFor(() => expect(calls.length).toBe(1));
+    const input = calls[0].body.input as {
+      learnContext?: { preferenceHints?: string[] };
+    };
+    expect(input.learnContext?.preferenceHints?.[0]).toContain("更短");
+  });
+
   it("情报检索展示服务端真实阶段回执，且不再出现编造的平台抓取过程", async () => {
     render(<ForgeDashboard />);
 

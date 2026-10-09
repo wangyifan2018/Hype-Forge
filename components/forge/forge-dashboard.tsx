@@ -48,6 +48,15 @@ import {
 import { parseProductPaste } from "@/lib/forge/parse-product-paste";
 import { parseDewuPublish } from "@/lib/forge/parse-dewu-publish";
 import { learnFromHistory } from "@/lib/forge/strategy-learner";
+import {
+  applySignal,
+  buildPreferenceHints,
+  type PreferenceSignal,
+} from "@/lib/forge/edit-preferences";
+import {
+  loadPreferenceProfile,
+  savePreferenceProfile,
+} from "@/lib/forge/preference-store";
 import { loadStep3Draft, saveStep3Draft } from "@/lib/forge/draft-store";
 import { getCategoryLabel, STYLE_OPTIONS } from "@/lib/forge/workspace-prefs";
 import type { ProductImageDraft } from "@/components/forge/product-images-upload";
@@ -252,10 +261,20 @@ export function ForgeDashboard() {
     [prefs.intelQuery, formValues.productPaste]
   );
 
+  /**
+   * 记录一次改稿偏好信号（Remix 选择 / 挑了哪条标题）。
+   * 命中阈值后由 buildPreferenceHints 注入文案 prompt。
+   */
+  const learnPreference = useCallback((signal: PreferenceSignal) => {
+    const next = applySignal(loadPreferenceProfile(), signal);
+    savePreferenceProfile(next);
+  }, []);
+
   const buildForgeInput = useCallback((): ForgeInput => {
     const parsed = parseProductPaste(formValues.productPaste, formValues.productLink ?? "");
     // 历史爆款 ICL：用卖家自己的互动数据筛出的样本喂给文案 prompt（越用越像本人）
     const learn = learnFromHistory(posted);
+    const preferenceHints = buildPreferenceHints(loadPreferenceProfile());
     return {
       trendId: formValues.trendId,
       productName: parsed.productName,
@@ -266,12 +285,13 @@ export function ForgeDashboard() {
       affiliateLink: parsed.affiliateLink,
       referenceCopy: parsed.referenceCopy,
       styleTags: workspaceCtx.styleTags,
-      ...(learn.iclBlock
+      ...(learn.iclBlock || preferenceHints.length > 0
         ? {
             learnContext: {
               iclBlock: learn.iclBlock,
               topFramework: learn.topFramework ?? undefined,
               sampleCount: learn.sampleCount,
+              ...(preferenceHints.length > 0 ? { preferenceHints } : {}),
             },
           }
         : {}),
@@ -685,6 +705,14 @@ export function ForgeDashboard() {
       mustFix?: string[]
     ): Promise<string | string[] | null> => {
       if (!copyText || !lastInput) return null;
+      if (
+        remixType === "shorter" ||
+        remixType === "hookier" ||
+        remixType === "more_professional" ||
+        remixType === "regenerate_titles"
+      ) {
+        learnPreference({ kind: "remix", option: remixType });
+      }
       const res = await fetch("/api/forge/remix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -924,6 +952,9 @@ export function ForgeDashboard() {
                 onGenerateEngage={handleEngage}
                 onRemix={handleRemix}
                 onCopyTextChange={setCopyText}
+                onTitleChosen={(chosen, alternatives) =>
+                  learnPreference({ kind: "title_choice", chosen, alternatives })
+                }
                 posted={posted}
                 onMarkPosted={handleMarkPosted}
                 onReloadPosted={(record) => {
