@@ -228,6 +228,7 @@ export function learnFromHistory(posts: PostedRecord[]): {
   patterns: StrategyPattern[];
   iclBlock: string;
   topFramework: string | null;
+  sampleCount: number;
 } {
   const patterns = analyzeStrategyPatterns(posts);
   const iclSamples = extractICLSamples(posts);
@@ -243,5 +244,6 @@ export function learnFromHistory(posts: PostedRecord[]): {
     patterns,
     iclBlock,
     topFramework,
+    sampleCount: iclSamples.length,
   };
 }

@@ -134,6 +134,18 @@ export const productImageMetaSchema = z.object({
 
 export type ProductImageMeta = z.infer<typeof productImageMetaSchema>;
 
+/**
+ * 卖家自己历史爆款的 ICL 上下文（数据源是浏览器 localStorage 里的发帖记录，
+ * 因此由前端算好后随请求下发），用于让文案越用越像卖家自己的爆款。
+ */
+export const learnContextSchema = z.object({
+  iclBlock: z.string().max(2000),
+  topFramework: z.string().optional(),
+  sampleCount: z.number().int().min(0),
+});
+
+export type LearnContext = z.infer<typeof learnContextSchema>;
+
 export const forgeInputSchema = z.object({
   trendId: z.string(),
   productName: z.string().min(1),
@@ -146,6 +158,8 @@ export const forgeInputSchema = z.object({
   affiliateLink: z.string().optional(),
   referenceCopy: z.string().max(2000).optional(),
   styleTags: z.array(z.string()).optional(),
+  /** 历史爆款 few-shot（可选） */
+  learnContext: learnContextSchema.optional(),
 });
 
 export type ForgeInput = z.infer<typeof forgeInputSchema>;

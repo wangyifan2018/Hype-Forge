@@ -119,7 +119,18 @@ ${viralBrief.psychologyAlignment ? `心理对齐：${viralBrief.psychologyAlignm
 正文须呼应【情绪钩子】；预埋词优先来自 keywordStrategy，自然嵌入不堆砌。`
     : "";
 
-  return `${rtfX}${strategyBlock}\n\n不要 JSON 包裹，直接输出 Markdown。`;
+  // 卖家自己的历史爆款（真实互动数据筛出的 ICL 样本）——越用越贴合本人风格
+  const learn = input.learnContext;
+  const learnBlock =
+    learn && learn.iclBlock.trim()
+      ? `\n\n【你的历史爆款（来自你自己的发帖记录，共 ${learn.sampleCount} 条）】\n${learn.iclBlock}${
+          learn.topFramework
+            ? `\n历史最佳框架：${learn.topFramework}（若与本次策略简报冲突，以本次策略为准）`
+            : ""
+        }`
+      : "";
+
+  return `${rtfX}${strategyBlock}${learnBlock}\n\n不要 JSON 包裹，直接输出 Markdown。`;
 }
 
 export function buildCopywriterUserPrompt(

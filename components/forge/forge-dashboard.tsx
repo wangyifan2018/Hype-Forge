@@ -49,6 +49,8 @@ import {
   resolveLlmModelId,
 } from "@/lib/ai/models";
 import { parseProductPaste } from "@/lib/forge/parse-product-paste";
+import { parseDewuPublish } from "@/lib/forge/parse-dewu-publish";
+import { learnFromHistory } from "@/lib/forge/strategy-learner";
 import { loadStep3Draft, saveStep3Draft } from "@/lib/forge/draft-store";
 import { getCategoryLabel, STYLE_OPTIONS } from "@/lib/forge/workspace-prefs";
 import type { ProductImageDraft } from "@/components/forge/product-images-upload";
@@ -249,6 +251,8 @@ export function ForgeDashboard() {
 
   const buildForgeInput = useCallback((): ForgeInput => {
     const parsed = parseProductPaste(formValues.productPaste, formValues.productLink ?? "");
+    // 历史爆款 ICL：用卖家自己的互动数据筛出的样本喂给文案 prompt（越用越像本人）
+    const learn = learnFromHistory(posted);
     return {
       trendId: formValues.trendId,
       productName: parsed.productName,
@@ -259,8 +263,17 @@ export function ForgeDashboard() {
       affiliateLink: parsed.affiliateLink,
       referenceCopy: parsed.referenceCopy,
       styleTags: workspaceCtx.styleTags,
+      ...(learn.iclBlock
+        ? {
+            learnContext: {
+              iclBlock: learn.iclBlock,
+              topFramework: learn.topFramework ?? undefined,
+              sampleCount: learn.sampleCount,
+            },
+          }
+        : {}),
     };
-  }, [formValues, trendContext, workspaceCtx.styleTags]);
+  }, [formValues, trendContext, workspaceCtx.styleTags, posted]);
 
   const canGoToSellerStep = useCallback(
     (step: SellerStep): boolean => {
@@ -737,10 +750,21 @@ export function ForgeDashboard() {
       affiliateLink: parsed.affiliateLink || undefined,
       copySnippet: copyText.slice(0, 200),
       picklistId: activePicklistId ?? undefined,
+      platform: formValues.platform,
+      title: parseDewuPublish(copyText).title || undefined,
+      hookFramework: viralBrief?.hookFramework,
       isHit: false,
     });
     toast.success("已记入发帖历史");
-  }, [formValues.productPaste, formValues.productLink, copyText, activePicklistId, markPosted]);
+  }, [
+    formValues.productPaste,
+    formValues.productLink,
+    formValues.platform,
+    copyText,
+    activePicklistId,
+    markPosted,
+    viralBrief?.hookFramework,
+  ]);
 
   const creativeHooks =
     activeLead?.creativeHooks ??

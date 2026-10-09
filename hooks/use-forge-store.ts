@@ -14,6 +14,7 @@ import {
   type WorkspacePrefs,
 } from "@/lib/forge/local-store";
 import type { HotProductLead } from "@/lib/forge/types";
+import { isHitPost } from "@/lib/forge/strategy-learner";
 
 const DEFAULT_PREFS: WorkspacePrefs = {
   category: "streetwear",
@@ -126,6 +127,11 @@ export const useForgeStore = create<ForgeStoreState>()(
           copySnippet: record.copySnippet,
           notes: record.notes,
           picklistId: record.picklistId,
+          // 之前这里只写死 isHit:false 且丢掉 title/hookFramework/platform，
+          // 导致 strategy-learner 的爆款样本永远是空的（学习闭环无法启动）
+          platform: record.platform,
+          title: record.title,
+          hookFramework: record.hookFramework,
           isHit: false,
         };
 
@@ -143,11 +149,12 @@ export const useForgeStore = create<ForgeStoreState>()(
 
       updateEngagement: (postId, engagement) =>
         set((state) => ({
-          posted: state.posted.map((record) =>
-            record.id === postId
-              ? { ...record, engagement, updatedAt: new Date().toISOString() }
-              : record
-          ),
+          posted: state.posted.map((record) => {
+            if (record.id !== postId) return record;
+            const next = { ...record, engagement };
+            // 记录互动后再判定是否爆款（isHitPost 依据真实互动阈值）
+            return { ...next, isHit: isHitPost(next) };
+          }),
         })),
 
       setPublishCheck: (itemId, checked) =>
