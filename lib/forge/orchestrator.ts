@@ -14,6 +14,8 @@ import {
   applyGateToCritic,
   compareCriticQuality,
 } from "@/lib/forge/quality-gate";
+import type { LlmUsageEntry } from "@/lib/ai/llm";
+import { formatUsageSummary, summarizeUsage } from "@/lib/ai/usage-summary";
 import { resolveTrend } from "@/lib/forge/trend-resolve";
 import { STEP_LABELS } from "@/lib/forge/pipeline-labels";
 import { buildCriticRevisionPrompt, CRITIC_SYSTEM } from "@/lib/ai/prompts/critic";
@@ -109,7 +111,7 @@ async function runCriticRevision(
     [
       { role: "user", content: revisionPrompt },
     ],
-    { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model }
+    { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model, onUsage: options?.onUsage }
   );
   // 修订返回的是纯文案（非 JSON），直接提取
   return raw.trim();
@@ -127,7 +129,19 @@ export async function* runForgePipeline(
 ): AsyncGenerator<ForgeRunEvent> {
   const state: ForgeState = { input };
   const visionUrls = imageDataUrls?.filter((u) => u.trim().length > 0) ?? [];
-  const call = { signal: options?.signal, model: options?.model };
+  /** 本次执行的模型用量（每次调用由 lib/ai/llm.ts 回报） */
+  const usage: LlmUsageEntry[] = [];
+  /** 失败/取消时也要告诉卖家已经消耗了多少调用 */
+  const usageEvent = () => ({
+    type: "log" as const,
+    message: formatUsageSummary(summarizeUsage(usage)),
+    level: "info" as const,
+  });
+  const call = {
+    signal: options?.signal,
+    model: options?.model,
+    onUsage: (entry: LlmUsageEntry) => usage.push(entry),
+  };
 
   try {
     let brief: ProductBrief | null = null;
@@ -215,6 +229,7 @@ export async function* runForgePipeline(
     } catch (error) {
       const message = mapStepError("visual", error);
       yield { type: "log", step: "visual", message, level: "error" };
+      yield usageEvent();
       yield { type: "error", message, step: "visual", phase: "visual" };
       return;
     }
@@ -239,6 +254,7 @@ export async function* runForgePipeline(
     } catch (error) {
       const message = mapStepError("copy", error);
       yield { type: "log", step: "copy", message, level: "error" };
+      yield usageEvent();
       yield { type: "error", message, step: "copy", phase: "copy" };
       return;
     }
@@ -458,14 +474,18 @@ export async function* runForgePipeline(
     }
 
     yield { type: "log", message: "流水线执行完成", level: "success" };
+    // 让卖家看到"这次跑了几次模型、花了多久、用了多少 token"
+    yield usageEvent();
     yield { type: "done" };
   } catch (error) {
     const message =
       error instanceof Error ? mapLlmError(error) : "Pipeline failed";
     if ((error as Error).name === "AbortError") {
+      yield usageEvent();
       yield { type: "error", message: "已取消执行", phase: "abort" };
       return;
     }
+    yield usageEvent();
     yield { type: "error", message, phase: "unknown" };
   }
 }

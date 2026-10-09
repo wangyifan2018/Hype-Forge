@@ -4,9 +4,11 @@ import { generateText, streamText, Output, type ModelMessage } from "ai";
 import type { z } from "zod";
 import {
   DEFAULT_LLM_MODEL_ID,
+  getFallbackModelId,
   isLlmModelId,
   type LlmModelId,
 } from "@/lib/ai/models";
+import { withModelFallback } from "@/lib/ai/model-fallback";
 import { extractJson } from "@/lib/forge/parse-json";
 
 export type SearchOptions = {
@@ -24,6 +26,19 @@ export type LlmCallOptions = {
   /** 启用百炼联网搜索（仅流式模式下生效，见 streamToString 注释） */
   search?: boolean;
   searchOptions?: SearchOptions;
+  /** 单次调用的用量/耗时回报（用于前端展示"这次花了多少"） */
+  onUsage?: (entry: LlmUsageEntry) => void;
+};
+
+/** 一次模型调用的用量与耗时（供前端汇总展示） */
+export type LlmUsageEntry = {
+  model: string;
+  mode: "text" | "object" | "search" | "stream";
+  ms: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  /** 是否由备用模型完成 */
+  fellBack?: boolean;
 };
 
 /** @ai-sdk/openai-compatible 的 provider 名，同时决定 providerOptions 的键名 */
@@ -49,6 +64,19 @@ function warnOnce(message: string): void {
 function getTimeoutMs(): number {
   const raw = Number(process.env.FORGE_LLM_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : 180_000;
+}
+
+function extractTokens(usage: unknown): {
+  inputTokens?: number;
+  outputTokens?: number;
+} {
+  if (!usage || typeof usage !== "object") return {};
+  const u = usage as Record<string, unknown>;
+  const num = (v: unknown) => (typeof v === "number" ? v : undefined);
+  return {
+    inputTokens: num(u.inputTokens ?? u.promptTokens),
+    outputTokens: num(u.outputTokens ?? u.completionTokens),
+  };
 }
 
 /** usage 是 PromiseLike，取不到时不影响主流程 */
@@ -77,6 +105,7 @@ function logCall(entry: {
   usage?: unknown;
   finishReason?: string;
   error?: string;
+  fellBackFrom?: string;
 }): void {
   const line = JSON.stringify({ scope: "llm", ...entry });
   if (entry.ok) console.info(line);
@@ -207,56 +236,95 @@ async function streamToString(options: {
   system?: string;
   providerOptions?: Record<string, BailianSearchProviderOptions>;
   signal?: AbortSignal;
+  onUsage?: (entry: LlmUsageEntry) => void;
 }): Promise<string> {
   const provider = getLlmProvider();
   if (!provider) throw new Error("LLM provider not available");
 
   // 流式请求的失败（如 401/429）不会抛到 textStream，需显式捕获，
   // 否则只能报 "Empty response from model"，掩盖真实原因导致静默降级。
-  let streamError: unknown;
   const callId = newCallId();
   const startedAt = Date.now();
-  const result = streamText({
-    model: provider(options.model),
-    messages: options.messages,
-    system: options.system,
-    providerOptions: options.providerOptions,
-    abortSignal: options.signal,
-    timeout: getTimeoutMs(),
-    onError: (event) => {
-      streamError = event.error;
-    },
-  });
+  const fallback = getFallbackModelId(options.model);
 
-  let fullText = "";
-  for await (const chunk of result.textStream) {
-    fullText += chunk;
-  }
+  const runOnce = async (attemptModel: string) => {
+    let streamError: unknown;
+    const result = streamText({
+      model: provider(attemptModel),
+      messages: options.messages,
+      system: options.system,
+      providerOptions: options.providerOptions,
+      abortSignal: options.signal,
+      timeout: getTimeoutMs(),
+      onError: (event) => {
+        streamError = event.error;
+      },
+    });
 
-  const usage = await safeUsage(result.usage);
+    let fullText = "";
+    for await (const chunk of result.textStream) {
+      fullText += chunk;
+    }
 
-  if (!fullText) {
-    const failure = streamError ?? new Error("Empty response from model");
+    const usage = await safeUsage(result.usage);
+    if (!fullText) {
+      throw streamError ?? new Error("Empty response from model");
+    }
+    return { fullText, usage };
+  };
+
+  try {
+    const outcome = await withModelFallback({
+      primary: options.model,
+      fallback,
+      onFallback: ({ from, to, reason }) => {
+        console.warn(
+          JSON.stringify({
+            scope: "llm",
+            event: "fallback",
+            from,
+            to,
+            reason: mapLlmError(reason),
+          })
+        );
+      },
+      attempt: runOnce,
+    });
+
+    const { fullText, usage } = outcome.value;
+    logCall({
+      id: callId,
+      model: outcome.usedModel,
+      mode: "search",
+      ms: Date.now() - startedAt,
+      ok: true,
+      usage,
+      fellBackFrom: outcome.primaryError ? options.model : undefined,
+    });
+    options.onUsage?.({
+      model: outcome.usedModel,
+      mode: "search",
+      ms: Date.now() - startedAt,
+      ...extractTokens(usage),
+      ...(outcome.primaryError ? { fellBack: true } : {}),
+    });
+    return fullText;
+  } catch (error) {
     logCall({
       id: callId,
       model: options.model,
       mode: "search",
       ms: Date.now() - startedAt,
       ok: false,
-      error: mapLlmError(failure),
+      error: mapLlmError(error),
     });
-    throw failure;
+    options.onUsage?.({
+      model: options.model,
+      mode: "search",
+      ms: Date.now() - startedAt,
+    });
+    throw error;
   }
-
-  logCall({
-    id: callId,
-    model: options.model,
-    mode: "search",
-    ms: Date.now() - startedAt,
-    ok: true,
-    usage,
-  });
-  return fullText;
 }
 
 /**
@@ -277,6 +345,7 @@ export async function chatComplete(
       system: options.system,
       providerOptions: buildProviderOptions(options),
       signal: options.signal,
+      onUsage: options.onUsage,
     });
   }
 
@@ -285,23 +354,53 @@ export async function chatComplete(
 
   const callId = newCallId();
   const startedAt = Date.now();
+  const fallback = getFallbackModelId(model);
+
   try {
-    const { text, usage, finishReason } = await generateText({
-      model: provider(model),
-      messages,
-      system: options?.system,
-      abortSignal: options?.signal,
-      timeout: getTimeoutMs(),
+    const outcome = await withModelFallback({
+      primary: model,
+      fallback,
+      onFallback: ({ from, to, reason }) => {
+        console.warn(
+          JSON.stringify({
+            scope: "llm",
+            event: "fallback",
+            from,
+            to,
+            reason: mapLlmError(reason),
+          })
+        );
+      },
+      attempt: async (attemptModel) => {
+        const { text, usage, finishReason } = await generateText({
+          model: provider(attemptModel),
+          messages,
+          system: options?.system,
+          abortSignal: options?.signal,
+          timeout: getTimeoutMs(),
+        });
+        if (!text) throw new Error("Empty response from model");
+        return { text, usage, finishReason };
+      },
     });
-    if (!text) throw new Error("Empty response from model");
+
+    const { text, usage, finishReason } = outcome.value;
     logCall({
       id: callId,
-      model,
+      model: outcome.usedModel,
       mode: "text",
       ms: Date.now() - startedAt,
       ok: true,
       usage,
       finishReason,
+      fellBackFrom: outcome.primaryError ? model : undefined,
+    });
+    options?.onUsage?.({
+      model: outcome.usedModel,
+      mode: "text",
+      ms: Date.now() - startedAt,
+      ...extractTokens(usage),
+      ...(outcome.primaryError ? { fellBack: true } : {}),
     });
     return text;
   } catch (error) {
@@ -312,6 +411,12 @@ export async function chatComplete(
       ms: Date.now() - startedAt,
       ok: false,
       error: mapLlmError(error),
+    });
+    // 失败同样回报：调用确实发生了，只是没拿到结果（token 未知）
+    options?.onUsage?.({
+      model,
+      mode: "text",
+      ms: Date.now() - startedAt,
     });
     throw error;
   }
@@ -332,6 +437,7 @@ export async function chatCompleteObject<T extends z.ZodType>(
       system: options.system,
       providerOptions: buildProviderOptions(options),
       signal: options.signal,
+      onUsage: options.onUsage,
     });
     const parsed = schema.safeParse(extractJson(text));
     if (!parsed.success) {
@@ -424,6 +530,11 @@ export async function* chatStream(
       ms: Date.now() - startedAt,
       ok: false,
       error: mapLlmError(streamError),
+    });
+    options?.onUsage?.({
+      model,
+      mode: "stream",
+      ms: Date.now() - startedAt,
     });
     throw streamError;
   }

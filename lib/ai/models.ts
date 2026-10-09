@@ -57,6 +57,17 @@ export function resolveLlmModelId(value: unknown): LlmModelId {
   return isLlmModelId(value) ? value : DEFAULT_LLM_MODEL_ID;
 }
 
+/**
+ * 备用模型：主模型遇到限流/5xx/网络问题时再试一次。
+ * 取目录中第一个与主模型不同、且能力达标的项（当前目录两项都支持图文+联网）。
+ */
+export function getFallbackModelId(primary: string): LlmModelId | undefined {
+  return LLM_MODELS.find(
+    (model) =>
+      model.id !== primary && model.supportsVision && model.supportsWebSearch
+  )?.id;
+}
+
 export function getLlmModelOption(id: string): LlmModelOption | undefined {
   return LLM_MODELS.find((model) => model.id === id);
 }

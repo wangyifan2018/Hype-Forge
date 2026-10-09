@@ -5,6 +5,7 @@ import {
   isLiveMode,
   mapLlmError,
   resolveRequestModel,
+  type LlmUsageEntry,
 } from "@/lib/ai/llm";
 import {
   buildCopywriterSystem,
@@ -125,6 +126,8 @@ const remixCopyResponseSchema = z.object({
 export type RunOptions = {
   signal?: AbortSignal;
   model?: string;
+  /** 单次模型调用的用量回报（orchestrator 汇总后展示给卖家） */
+  onUsage?: (entry: LlmUsageEntry) => void;
 };
 
 /** 情报类接口返回的降级元信息：fallback=true 表示当前是示例数据，非真实联网情报 */
@@ -520,6 +523,7 @@ export async function runVision(
         chatWithImages(extra ? `${basePrompt}\n\n${extra}` : basePrompt, urls, {
           signal: options?.signal,
           model: options?.model,
+          onUsage: options?.onUsage,
         }),
     });
   } catch (error) {
@@ -555,6 +559,7 @@ export async function runViralBrief(
             signal: options?.signal,
             system: VIRAL_PLANNER_SYSTEM,
             model: options?.model,
+            onUsage: options?.onUsage,
           }
         ),
     });
@@ -595,7 +600,7 @@ export async function runVisualPrompts(
           content: buildVisualUserPrompt(input, brief, viralBrief),
         },
       ],
-      { signal: options?.signal, system: VISUAL_SYSTEM, model: options?.model }
+      { signal: options?.signal, system: VISUAL_SYSTEM, model: options?.model, onUsage: options?.onUsage }
     );
     return normalizeVisualPrompts(
       extractJson(raw) as Record<string, unknown>
@@ -629,6 +634,7 @@ export async function runCopyDraft(
         signal: options?.signal,
         system: buildCopywriterSystem(input, viralBrief),
         model: options?.model,
+        onUsage: options?.onUsage,
       }
     );
     return cleanCopyDraft(raw);
@@ -703,7 +709,7 @@ export async function runCritic(
           content: buildCriticUserPrompt(input, copyDraft, visual, brief, viralBrief),
         },
       ],
-      { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model }
+      { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model, onUsage: options?.onUsage }
     );
     const report = criticReportSchema.parse(extractJson(raw));
     // 合规 / 去 AI 味 / 真实感 / 数字事实核对一律以代码结论为准，覆盖 LLM 自评
@@ -738,6 +744,7 @@ export async function* runCopyStream(
         signal: options?.signal,
         system: buildCopywriterSystem(input, viralBrief),
         model: options?.model,
+        onUsage: options?.onUsage,
       }
     );
   } catch (error) {
@@ -787,6 +794,7 @@ export async function runProductEnrich(
           signal: options?.signal,
           system: PRODUCT_ENRICH_SYSTEM,
           model: options?.model,
+          onUsage: options?.onUsage,
         }
       ),
   });
@@ -843,7 +851,7 @@ export async function runRemix(
               : buildRemixUserPrompt(params),
           },
         ],
-        { signal: options?.signal, system: REMIX_SYSTEM, model: options?.model }
+        { signal: options?.signal, system: REMIX_SYSTEM, model: options?.model, onUsage: options?.onUsage }
       ),
   });
 }
@@ -897,7 +905,7 @@ export async function runEngage(
             content: extra ? `${buildPrompt()}\n\n${extra}` : buildPrompt(),
           },
         ],
-        { signal: options?.signal, system: ENGAGE_SYSTEM, model: options?.model }
+        { signal: options?.signal, system: ENGAGE_SYSTEM, model: options?.model, onUsage: options?.onUsage }
       ),
   });
   return {
