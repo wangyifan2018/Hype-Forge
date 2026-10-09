@@ -52,6 +52,7 @@ import {
   pushStage,
   type IntelStage,
 } from "@/lib/forge/intel-stages";
+import { callAndParse } from "@/lib/forge/parse-with-repair";
 import { normalizeVisualPrompts } from "@/lib/forge/visual-normalize";
 import { rankTitleCandidates } from "@/lib/forge/title-scorer";
 import { cleanCopyDraft } from "@/lib/forge/clean-copy";
@@ -73,6 +74,7 @@ import {
   mockVisualPrompts,
   delay,
 } from "@/lib/forge/mock";
+import { z } from "zod";
 import type {
   CriticReport,
   ForgeInput,
@@ -102,6 +104,20 @@ import type {
 } from "@/lib/forge/intel-discovery";
 
 /** 服务层通用调用选项：模型由 UI 选择后随请求下发 */
+/**
+ * 二创返回按类型用**严格** schema：缺字段会触发 callAndParse 的"回灌错误重试"，
+ * 而不是静默返回空对象让界面什么都不显示。
+ */
+const remixTitlesResponseSchema = z.object({
+  titles: z.array(z.string()).min(1),
+  copyText: z.string().optional(),
+});
+
+const remixCopyResponseSchema = z.object({
+  copyText: z.string().min(1),
+  titles: z.array(z.string()).optional(),
+});
+
 export type RunOptions = {
   signal?: AbortSignal;
   model?: string;
@@ -467,24 +483,16 @@ export async function runVision(
   const keywords = extractMeaningfulKeywords(textForKeywords, 5);
 
   try {
-    const raw = await chatWithImages(
-      `${VISION_SYSTEM}\n\n${buildVisionUserPrompt(urls.length, keywords)}`,
-      urls,
-      { signal: options?.signal, model: options?.model }
-    );
-
-    let json: unknown;
-    try {
-      json = extractJson(raw);
-    } catch {
-      throw new Error("识图返回内容不是合法 JSON，可重试或换更清晰的主图");
-    }
-
-    const parsed = productBriefSchema.safeParse(json);
-    if (!parsed.success) {
-      throw new Error("识图返回结构不符合契约，可重试或换更清晰的主图");
-    }
-    return parsed.data;
+    const basePrompt = `${VISION_SYSTEM}\n\n${buildVisionUserPrompt(urls.length, keywords)}`;
+    return await callAndParse({
+      label: "识图",
+      schema: productBriefSchema,
+      call: (extra) =>
+        chatWithImages(extra ? `${basePrompt}\n\n${extra}` : basePrompt, urls, {
+          signal: options?.signal,
+          model: options?.model,
+        }),
+    });
   } catch (error) {
     throw new Error(mapLlmError(error));
   }
@@ -501,22 +509,32 @@ export async function runViralBrief(
   }
 
   try {
-    const raw = await chatComplete(
-      [
-        {
-          role: "user",
-          content: buildViralPlannerUserPrompt(input, brief),
-        },
-      ],
-      { signal: options?.signal, system: VIRAL_PLANNER_SYSTEM, model: options?.model }
-    );
-    const parsed = viralBriefSchema.parse(extractJson(raw));
-    
+    const parsed = await callAndParse({
+      label: "爆款策划",
+      schema: viralBriefSchema,
+      call: (extra) =>
+        chatComplete(
+          [
+            {
+              role: "user",
+              content: extra
+                ? `${buildViralPlannerUserPrompt(input, brief)}\n\n${extra}`
+                : buildViralPlannerUserPrompt(input, brief),
+            },
+          ],
+          {
+            signal: options?.signal,
+            system: VIRAL_PLANNER_SYSTEM,
+            model: options?.model,
+          }
+        ),
+    });
+
     // 对标题候选进行评分排序
     if (parsed.titleCandidates && parsed.titleCandidates.length > 0) {
       parsed.titleCandidates = rankTitleCandidates(parsed.titleCandidates);
     }
-    
+
     return parsed;
   } catch (error) {
     // 策划失败不阻塞流水线，返回 mock 兜底（显式告警，便于区分"用了兜底"与"真出结果"）
@@ -719,13 +737,26 @@ export async function runProductEnrich(
     };
   }
 
-  const raw = await chatComplete(
-    [
-      { role: "user", content: buildProductEnrichUserPrompt(params) },
-    ],
-    { signal: options?.signal, system: PRODUCT_ENRICH_SYSTEM, model: options?.model }
-  );
-  return productEnrichResponseSchema.parse(extractJson(raw));
+  return callAndParse({
+    label: "AI 补卖点",
+    schema: productEnrichResponseSchema,
+    call: (extra) =>
+      chatComplete(
+        [
+          {
+            role: "user",
+            content: extra
+              ? `${buildProductEnrichUserPrompt(params)}\n\n${extra}`
+              : buildProductEnrichUserPrompt(params),
+          },
+        ],
+        {
+          signal: options?.signal,
+          system: PRODUCT_ENRICH_SYSTEM,
+          model: options?.model,
+        }
+      ),
+  });
 }
 
 export async function runRemix(
@@ -752,17 +783,23 @@ export async function runRemix(
     return { copyText: params.copyText };
   }
 
-  const raw = await chatComplete(
-    [
-      { role: "user", content: buildRemixUserPrompt(params) },
-    ],
-    { signal: options?.signal, system: REMIX_SYSTEM, model: options?.model }
-  );
-  const json = extractJson(raw) as {
-    copyText?: string;
-    titles?: string[];
-  };
-  return json;
+  const wantsTitles = params.remixType === "regenerate_titles";
+  return callAndParse({
+    label: wantsTitles ? "二创·换标题" : "二创·改稿",
+    schema: wantsTitles ? remixTitlesResponseSchema : remixCopyResponseSchema,
+    call: (extra) =>
+      chatComplete(
+        [
+          {
+            role: "user",
+            content: extra
+              ? `${buildRemixUserPrompt(params)}\n\n${extra}`
+              : buildRemixUserPrompt(params),
+          },
+        ],
+        { signal: options?.signal, system: REMIX_SYSTEM, model: options?.model }
+      ),
+  });
 }
 
 export async function runEngage(
@@ -797,19 +834,26 @@ export async function runEngage(
     };
   }
 
-  const raw = await chatComplete(
-    [
-      {
-        role: "user",
-        content: buildEngageUserPrompt({
-          productName: params.productName,
-          hasAffiliateLink: Boolean(params.affiliateLink?.trim()),
-        }),
-      },
-    ],
-    { signal: options?.signal, system: ENGAGE_SYSTEM, model: options?.model }
-  );
-  const parsed = engageResponseSchema.parse(extractJson(raw));
+  const buildPrompt = () =>
+    buildEngageUserPrompt({
+      productName: params.productName,
+      hasAffiliateLink: Boolean(params.affiliateLink?.trim()),
+    });
+
+  const parsed = await callAndParse({
+    label: "评论话术",
+    schema: engageResponseSchema,
+    call: (extra) =>
+      chatComplete(
+        [
+          {
+            role: "user",
+            content: extra ? `${buildPrompt()}\n\n${extra}` : buildPrompt(),
+          },
+        ],
+        { signal: options?.signal, system: ENGAGE_SYSTEM, model: options?.model }
+      ),
+  });
   return {
     templates: parsed.templates,
     replyStrategies: parsed.replyStrategies,

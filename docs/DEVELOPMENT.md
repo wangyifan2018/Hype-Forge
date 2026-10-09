@@ -47,6 +47,9 @@ npm run dev:clean
   `use-forge-pipeline` 自动恢复。**不要把生成结果只放在 React state 里。**
 - **学习回流**：`strategy-learner.learnFromHistory(posted)` → `ForgeInput.learnContext` → copywriter system。
   改动发帖记录字段（`title` / `hookFramework` / `platform` / `engagement`）时注意别断掉这条链。
+- **情报过程必须真实**：情报阶段一律由服务端 `stages`（`lib/forge/intel-stages.ts`）回执驱动，
+  **不要**再用 `delayMs`/`setTimeout` 编造阶段或分析文案（历史上曾出现"采集抖音热搜"
+  "扫描得物社区"等 13 个假阶段，而背后只有 1 次联网调用）。
 
 ## 如何改 Step3 UI
 

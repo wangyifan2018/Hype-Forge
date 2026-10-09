@@ -70,12 +70,25 @@ Base URL（本地开发）：`http://localhost:3000`
       "hookAngle": "..."
     }
   ],
-  "cached": false
+  "cached": false,
+  "elapsedMs": 8420,
+  "stages": [
+    { "id": "cache", "label": "查询热点情报缓存", "detail": "未命中，走联网检索", "ms": 1, "status": "ok" },
+    { "id": "search", "label": "联网检索公开讨论", "detail": "模型 deepseek-v4.1-flash", "ms": 8400, "status": "ok" },
+    { "id": "parse", "label": "结构化解析与归一", "detail": "得到 3 条场景 · 2 条带来源", "ms": 19, "status": "ok" }
+  ]
 }
 ```
 
-- 相同 `platform` + `categoryHint` 30 分钟内返回缓存，`cached: true`
-- 失败时服务端回退静态 Mock 趋势列表
+| 字段 | 说明 |
+|------|------|
+| `cached` | 命中 30 分钟缓存；缓存 key 含**模型**，切模型不会复用旧结果 |
+| `stages` | **服务端实际发生的阶段与耗时**（缓存查询 / 联网检索 / 结构化解析 / 降级），前端据此展示真实过程，不再播放编造的多阶段动画 |
+| `elapsedMs` | 本次检索总耗时 |
+| `fallback` / `fallbackReason` | 联网失败时返回示例数据并说明原因；此时**不写缓存** |
+
+- 相同 `platform` + `categoryHint` + `model` 30 分钟内返回缓存，`cached: true`
+- 失败时服务端回退静态 Mock 趋势列表，并在 `stages` 里留一条 `status: "warn"` 的降级记录
 
 ---
 
@@ -212,9 +225,9 @@ Base URL（本地开发）：`http://localhost:3000`
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/forge/vision` | `{ "image": "data:..." }` → ProductBrief |
-| POST | `/api/forge/prompts` | `{ "input", "productBrief?" }` → VisualPrompts |
-| POST | `/api/forge/stream` | `{ "input", "productBrief?", "prompts?" }` → SSE 仅文案 |
+| POST | `/api/forge/vision` | `{ "image": "data:..." }` → ProductBrief（**当前 Web UI 未调用**，保留作外部/调试接口） |
+| POST | `/api/forge/prompts` | `{ "input", "productBrief?" }` → VisualPrompts（同上，未接线） |
+| POST | `/api/forge/stream` | `{ "input", "productBrief?", "prompts?" }` → SSE 仅文案（同上，未接线；主流程走 `/api/forge/run`） |
 
 ---
 
