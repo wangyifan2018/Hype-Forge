@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { applyGateToCritic, runQualityGate } from "@/lib/forge/quality-gate";
+import {
+  applyGateToCritic,
+  compareCriticQuality,
+  runQualityGate,
+} from "@/lib/forge/quality-gate";
 import { checkCompliance } from "@/lib/forge/compliance-check";
 import type { CriticReport } from "@/lib/forge/types";
 
@@ -220,5 +224,45 @@ describe("applyGateToCritic · 覆盖范围", () => {
     // 主观项仍保留模型评分
     expect(merged.scores.hook).toBe(95);
     expect(merged.scores.emotion).toBe(90);
+  });
+});
+
+describe("compareCriticQuality · 多轮改写择优", () => {
+  const base = (over: Partial<CriticReport["scores"]>): CriticReport => ({
+    scores: {
+      hook: 80,
+      emotion: 80,
+      platformFit: 80,
+      visualAlign: 80,
+      hashtagPresent: 80,
+      viralPotential: 80,
+      searchKeywordDensity: 80,
+      scrollStopPower: 80,
+      antiAiScore: 80,
+      structureCheck: 80,
+      complianceCheck: 100,
+      ...over,
+    },
+    mustFix: [],
+  });
+
+  it("合规不过的一版永远劣于合规通过的一版（主观分不能抵消）", () => {
+    const nice = base({ complianceCheck: 0, hook: 100, viralPotential: 100 });
+    const compliant = base({ complianceCheck: 100, hook: 60, viralPotential: 60 });
+    expect(compareCriticQuality(compliant, nice)).toBeGreaterThan(0);
+    expect(compareCriticQuality(nice, compliant)).toBeLessThan(0);
+  });
+
+  it("都合规时先比结构，再比去 AI 味", () => {
+    const better = base({ structureCheck: 100, antiAiScore: 70 });
+    const worse = base({ structureCheck: 60, antiAiScore: 99 });
+    expect(compareCriticQuality(better, worse)).toBeGreaterThan(0);
+  });
+
+  it("确定性分相同时才比主观的钩子与爆款潜力", () => {
+    const a = base({ hook: 90, viralPotential: 90 });
+    const b = base({ hook: 70, viralPotential: 70 });
+    expect(compareCriticQuality(a, b)).toBeGreaterThan(0);
+    expect(compareCriticQuality(b, a)).toBeLessThan(0);
   });
 });

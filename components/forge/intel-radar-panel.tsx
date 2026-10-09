@@ -318,6 +318,46 @@ function ParticleRing({ running }: { running: boolean }) {
   );
 }
 
+/* ── 可信度徽标 ────────────────────────────────────────────────────────── */
+
+function ConfidenceBadge({
+  confidence,
+}: {
+  confidence?: {
+    level: "high" | "medium" | "low";
+    sourceCount: number;
+    freshestDate?: string;
+    reasons: string[];
+    needsVerify: boolean;
+  };
+}) {
+  if (!confidence) return null;
+  const label =
+    confidence.level === "high"
+      ? "来源可核验"
+      : confidence.needsVerify
+        ? "待核实"
+        : "来源一般";
+  return (
+    <span
+      title={confidence.reasons.join("；")}
+      className={cn(
+        "rounded border px-1",
+        confidence.level === "high"
+          ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+          : confidence.level === "medium"
+            ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+            : "border-red-500/40 bg-red-500/10 text-red-300"
+      )}
+    >
+      {label}
+      {confidence.sourceCount > 0
+        ? ` · ${confidence.sourceCount} 条${confidence.freshestDate ? ` · ${confidence.freshestDate}` : ""}`
+        : ""}
+    </span>
+  );
+}
+
 /* ── Trend Heat Bar ────────────────────────────────────────────────────── */
 
 function TrendHeatBar({ trends }: { trends: HotTrendCard[] }) {
@@ -688,6 +728,36 @@ export function IntelRadarPanel({
           {trends.length > 0 && (
             <div className="relative z-10 mt-2 shrink-0">
               <TrendHeatBar trends={trends} />
+            </div>
+          )}
+
+          {/* 情报结论：带来源与可信度，跑完后仍可复核 */}
+          {trends.length > 0 && (
+            <div className="relative z-10 mt-2 max-h-40 shrink-0 space-y-1 overflow-y-auto">
+              <p className="text-[7px] uppercase tracking-widest text-terminal-muted">
+                情报结论 · 来源与可信度
+              </p>
+              {trends.map((t) => (
+                <div
+                  key={t.id}
+                  className="rounded border border-terminal-border/60 bg-terminal-bg/40 px-1.5 py-1"
+                >
+                  <div className="flex flex-wrap items-center gap-1 text-[8px]">
+                    <span className="font-medium text-foreground/85">
+                      {t.title}
+                    </span>
+                    <span className="text-terminal-accent">
+                      {t.heatScore}
+                    </span>
+                    <ConfidenceBadge confidence={t.confidence} />
+                  </div>
+                  {t.sources && t.sources.length > 0 && (
+                    <p className="truncate text-[7px] text-terminal-muted/80">
+                      {t.sources.slice(0, 2).join("；")}
+                    </p>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 

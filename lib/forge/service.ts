@@ -53,6 +53,10 @@ import {
   type IntelStage,
 } from "@/lib/forge/intel-stages";
 import { callAndParse } from "@/lib/forge/parse-with-repair";
+import {
+  analyzeIntelConfidence,
+  rankByTrustThenHeat,
+} from "@/lib/forge/intel-confidence";
 import { normalizeVisualPrompts } from "@/lib/forge/visual-normalize";
 import { rankTitleCandidates } from "@/lib/forge/title-scorer";
 import { cleanCopyDraft } from "@/lib/forge/clean-copy";
@@ -199,7 +203,10 @@ export async function runProductScout(
       status: "ok",
     });
     return {
-      leads: sortLeadsByPriority(mockProductLeads()),
+      leads: sortLeadsByPriority(mockProductLeads()).map((lead) => ({
+        ...lead,
+        confidence: analyzeIntelConfidence(lead.sources),
+      })),
       cached: false,
       searchedAt: new Date().toISOString(),
       stages,
@@ -266,13 +273,23 @@ export async function runProductScout(
         const json = extractJson(raw) as
           | { leads?: HotProductLead[] }
           | HotProductLead[];
-        return sortLeadsByPriority(
-          Array.isArray(json)
-            ? json
-            : productScoutResponseSchema.parse(json).leads
+        const list = Array.isArray(json)
+          ? json
+          : productScoutResponseSchema.parse(json).leads;
+        // 用 sources 计算可信度，并让"可核验"的线索优先（而非只看热度）
+        return rankByTrustThenHeat(
+          sortLeadsByPriority(list).map((lead) => ({
+            ...lead,
+            confidence: analyzeIntelConfidence(lead.sources),
+          }))
         );
       },
-      (list) => `得到 ${list.length} 条线索`
+      (list) => {
+        const verified = list.filter(
+          (l) => l.confidence?.needsVerify === false
+        ).length;
+        return `得到 ${list.length} 条线索 · ${verified} 条来源可核验`;
+      }
     );
     setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope, effectiveModel);
     return {
@@ -336,7 +353,10 @@ export async function runTrendScan(
       status: "ok",
     });
     return {
-      trends: mockHotTrends(platform),
+      trends: mockHotTrends(platform).map((trend) => ({
+        ...trend,
+        confidence: analyzeIntelConfidence(trend.sources),
+      })),
       cached: false,
       searchedAt: new Date().toISOString(),
       stages,
@@ -404,13 +424,22 @@ export async function runTrendScan(
         const json = extractJson(raw) as
           | { trends?: HotTrendCard[] }
           | HotTrendCard[];
-        return Array.isArray(json)
+        const list = Array.isArray(json)
           ? json
           : hotTrendScanResponseSchema.parse(json).trends;
+        // 用 sources 计算可信度，并让"可核验"的场景优先（而非只看热度）
+        return rankByTrustThenHeat(
+          list.map((trend) => ({
+            ...trend,
+            confidence: analyzeIntelConfidence(trend.sources),
+          }))
+        );
       },
       (list) => {
-        const withSources = list.filter((t) => (t.sources?.length ?? 0) > 0).length;
-        return `得到 ${list.length} 条场景 · ${withSources} 条带来源`;
+        const verified = list.filter(
+          (t) => t.confidence?.needsVerify === false
+        ).length;
+        return `得到 ${list.length} 条场景 · ${verified} 条来源可核验`;
       }
     );
     setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope, effectiveModel);

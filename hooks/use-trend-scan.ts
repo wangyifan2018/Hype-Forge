@@ -8,6 +8,7 @@ import type {
 } from "@/lib/forge/intel-discovery";
 import type { HotTrendCard, Platform } from "@/lib/forge/types";
 import type { IntelStage } from "@/lib/forge/intel-stages";
+import { rankByTrustThenHeat } from "@/lib/forge/intel-confidence";
 
 /** 情报检索返回：数据 + 服务端真实阶段回执 */
 export type TrendScanMeta = {
@@ -69,9 +70,8 @@ export function useTrendScan() {
           `热点情报联网失败，已降级为示例数据${data.fallbackReason ? `：${data.fallbackReason}` : ""}`
         );
       }
-      const sorted = [...data.trends].sort(
-        (a, b) => b.heatScore - a.heatScore
-      );
+      // 服务端已按"可核验优先、热度次之"排序，这里沿用同一规则，避免打乱
+      const sorted = rankByTrustThenHeat(data.trends);
       setScannedTrends(sorted);
       setScanCached(Boolean(data.cached));
       setSearchedAt(data.searchedAt ?? new Date().toISOString());

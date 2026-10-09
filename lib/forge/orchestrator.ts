@@ -10,7 +10,10 @@ import {
 } from "@/lib/forge/service";
 import { ensureHashtagSection } from "@/lib/forge/copy-hashtags";
 import { mapLlmError } from "@/lib/ai/llm";
-import { applyGateToCritic } from "@/lib/forge/quality-gate";
+import {
+  applyGateToCritic,
+  compareCriticQuality,
+} from "@/lib/forge/quality-gate";
 import { resolveTrend } from "@/lib/forge/trend-resolve";
 import { STEP_LABELS } from "@/lib/forge/pipeline-labels";
 import { buildCriticRevisionPrompt, CRITIC_SYSTEM } from "@/lib/ai/prompts/critic";
@@ -265,6 +268,10 @@ export async function* runForgePipeline(
         level: "success",
       };
 
+      // 多轮改写择优：保留历次尝试中最好的一版（而不是默认用最后一版）
+      let bestCopy = currentCopy;
+      let bestCritic = critic;
+
       // Multi-round iteration if threshold not met
       let round = 1;
       while (round < MAX_CRITIC_ROUNDS && !criticMeetsThreshold(critic) && critic.mustFix.length > 0) {
@@ -295,6 +302,18 @@ export async function* runForgePipeline(
           critic.scoredHistory = [...scoreHistory];
           scoreHistory.push(critic.scores);
 
+          if (compareCriticQuality(critic, bestCritic) > 0) {
+            bestCopy = currentCopy;
+            bestCritic = critic;
+          } else {
+            yield {
+              type: "log",
+              step: "critic",
+              message: `第 ${round} 轮改写未优于上一版，已保留更优版本`,
+              level: "warn",
+            };
+          }
+
           yield {
             type: "log",
             step: "critic",
@@ -310,6 +329,18 @@ export async function* runForgePipeline(
           };
           break;
         }
+      }
+
+      // 最终采用"最佳尝试"：若最后一轮更差，回退到更好的那一版
+      if (bestCopy !== currentCopy) {
+        currentCopy = bestCopy;
+        critic = bestCritic;
+        yield {
+          type: "log",
+          step: "critic",
+          message: "已选用多轮中评分最优的一版（最后一轮更差，已回退）",
+          level: "info",
+        };
       }
 
       // Attach full history to final critic

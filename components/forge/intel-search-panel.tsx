@@ -301,10 +301,47 @@ export function IntelSearchPanel({
                   {t.whyNow && (
                     <p className="mt-0.5 text-terminal-muted">{t.whyNow}</p>
                   )}
-                  {t.sources && t.sources.length > 0 && (
-                    <p className="mt-0.5 truncate text-[8px] text-terminal-muted/80">
-                      来源：{t.sources.slice(0, 2).join("；")}
-                    </p>
+                  {(t.sources?.length || t.confidence) && (
+                    <div className="mt-0.5 space-y-0.5">
+                      {t.confidence && (
+                        <p className="flex flex-wrap items-center gap-1 text-[8px]">
+                          <span
+                            className={cn(
+                              "rounded border px-1",
+                              t.confidence.level === "high"
+                                ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                : t.confidence.level === "medium"
+                                  ? "border-amber-500/40 bg-amber-500/10 text-amber-300"
+                                  : "border-red-500/40 bg-red-500/10 text-red-300"
+                            )}
+                          >
+                            {t.confidence.level === "high"
+                              ? "来源可核验"
+                              : t.confidence.needsVerify
+                                ? "待核实"
+                                : "来源一般"}
+                          </span>
+                          {t.confidence.sourceCount > 0 && (
+                            <span className="text-terminal-muted/80">
+                              {t.confidence.sourceCount} 条来源
+                              {t.confidence.freshestDate
+                                ? ` · 最新 ${t.confidence.freshestDate}`
+                                : " · 无日期"}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      {t.sources && t.sources.length > 0 && (
+                        <p className="truncate text-[8px] text-terminal-muted/80">
+                          来源：{t.sources.slice(0, 2).join("；")}
+                        </p>
+                      )}
+                      {t.confidence && t.confidence.reasons.length > 0 && (
+                        <p className="text-[8px] text-amber-400/80">
+                          {t.confidence.reasons.join("；")}
+                        </p>
+                      )}
+                    </div>
                   )}
                   {t.bestPostWindow && (
                     <p className="mt-0.5 text-[9px] text-terminal-accent/90">

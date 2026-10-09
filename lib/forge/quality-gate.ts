@@ -246,6 +246,32 @@ export function runQualityGate(
   };
 }
 
+/**
+ * 比较两份质检结果的优劣（用于多轮改写时保留最佳版本）。
+ *
+ * 采用字典序而非加权求和：合规是硬门槛，其次结构完整、去 AI 味，
+ * 最后才比较主观的钩子与爆款潜力——避免"用主观分抵消合规问题"。
+ *
+ * @returns >0 表示 a 更好，<0 表示 b 更好，0 表示同等
+ */
+export function compareCriticQuality(a: CriticReport, b: CriticReport): number {
+  const passA = (a.scores.complianceCheck ?? 0) >= 100 ? 1 : 0;
+  const passB = (b.scores.complianceCheck ?? 0) >= 100 ? 1 : 0;
+  if (passA !== passB) return passA - passB;
+
+  const structureA = a.scores.structureCheck ?? 0;
+  const structureB = b.scores.structureCheck ?? 0;
+  if (structureA !== structureB) return structureA - structureB;
+
+  const aiA = a.scores.antiAiScore ?? 0;
+  const aiB = b.scores.antiAiScore ?? 0;
+  if (aiA !== aiB) return aiA - aiB;
+
+  const hookA = (a.scores.hook ?? 0) + (a.scores.viralPotential ?? 0);
+  const hookB = (b.scores.hook ?? 0) + (b.scores.viralPotential ?? 0);
+  return hookA - hookB;
+}
+
 /** 用确定性结论覆盖 LLM 自评，并把问题并入 mustFix */
 export function applyGateToCritic(
   report: CriticReport,

@@ -32,6 +32,19 @@ export const psychologyTriggerSchema = z.enum([
 
 export type PsychologyTrigger = z.infer<typeof psychologyTriggerSchema>;
 
+/** 情报可信度（由 sources 计算，见 lib/forge/intel-confidence.ts） */
+export const intelConfidenceSchema = z.object({
+  level: z.enum(["high", "medium", "low"]),
+  sourceCount: z.number().int().min(0),
+  datedCount: z.number().int().min(0),
+  freshestDate: z.string().optional(),
+  freshestAgeDays: z.number().optional(),
+  reasons: z.array(z.string()),
+  needsVerify: z.boolean(),
+});
+
+export type IntelConfidenceInfo = z.infer<typeof intelConfidenceSchema>;
+
 export const hotTrendCardSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -51,6 +64,8 @@ export const hotTrendCardSchema = z.object({
   psychologyTriggers: z.array(psychologyTriggerSchema).min(1).max(4).optional(),
   viralPotential: z.number().min(1).max(100).optional(),
   emotionalHook: z.string().optional(),
+  /** 可信度：来源数量/日期/是否需要人工核实（服务端计算） */
+  confidence: intelConfidenceSchema.optional(),
 });
 
 export type HotTrendCard = z.infer<typeof hotTrendCardSchema>;
@@ -85,6 +100,9 @@ export const hotProductLeadSchema = z.object({
   psychologyTriggers: z.array(psychologyTriggerSchema).min(1).max(4).optional(),
   viralPotential: z.number().min(1).max(100).optional(),
   emotionalHook: z.string().optional(),
+  /** 线索来源（同趋势卡：来源名｜话题/榜单｜日期） */
+  sources: z.array(z.string()).optional(),
+  confidence: intelConfidenceSchema.optional(),
 });
 
 export const productEnrichResponseSchema = z.object({

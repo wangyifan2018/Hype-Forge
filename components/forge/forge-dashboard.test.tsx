@@ -84,7 +84,27 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
         if (url.includes("/api/forge/trends/scan")) {
           scanCalls += 1;
           return jsonRes({
-            trends: [],
+            trends: [
+              {
+                id: "t1",
+                title: "夏日球鞋场景",
+                heatScore: 88,
+                keywords: ["球鞋"],
+                sceneEn: "scene",
+                sceneZh: "场景",
+                hookAngle: "角度",
+                sources: ["得物社区话题｜#夏日球鞋｜2026-06-18"],
+                confidence: {
+                  level: "high",
+                  sourceCount: 1,
+                  datedCount: 1,
+                  freshestDate: "2026-06-18",
+                  freshestAgeDays: 2,
+                  reasons: [],
+                  needsVerify: false,
+                },
+              },
+            ],
             cached: false,
             searchedAt: new Date().toISOString(),
             elapsedMs: 8420,
@@ -209,6 +229,8 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
     );
     // 真实耗时来自服务端 stages
     expect(document.body.textContent).toContain("8.4s");
+    // 可信度徽标来自 confidence（可核验的情报才不加"待核实"）
+    expect(document.body.textContent).toContain("来源可核验");
     // 编造的"逐平台抓取"过程不得再出现
     expect(document.body.textContent).not.toContain("采集抖音热搜");
     expect(document.body.textContent).not.toContain("扫描得物社区");
