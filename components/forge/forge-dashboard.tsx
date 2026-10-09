@@ -1,9 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { FormProvider, useForm } from "react-hook-form";
+import {
+  DEFAULT_INPUT_FORM_VALUES,
+  inputFormResolver,
+  type InputFormValues,
+} from "@/lib/forge/form-schema";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import { InputPanel } from "@/components/forge/input-panel";
@@ -59,29 +62,17 @@ function isAbortError(error: unknown): boolean {
   return error instanceof Error && error.name === "AbortError";
 }
 
-const inputFormSchema = z.object({
-  trendId: z.string().min(1, "请选择趋势"),
-  productPaste: z.string().min(10, "商品文案至少 10 个字符"),
-  productLink: z.string().optional(),
-  platform: z.enum(["xiaohongshu", "dewu"]),
-});
-
-type InputFormState = z.infer<typeof inputFormSchema>;
-
 export function ForgeDashboard() {
-  const {
-    watch,
-    setValue,
-    getValues,
-  } = useForm<InputFormState>({
-    resolver: zodResolver(inputFormSchema),
-    defaultValues: {
-      trendId: DEFAULT_DEWU_TREND_ID,
-      productPaste: "",
-      productLink: "",
-      platform: "dewu",
-    },
+  /**
+   * 唯一表单实例：通过 <FormProvider> 下发，InputPanel 用 useFormContext 读写同一份状态。
+   * 切勿在子组件里另建 useForm（曾因此导致 Step3 粘贴内容进不了流水线）。
+   */
+  const form = useForm<InputFormValues>({
+    resolver: inputFormResolver,
+    defaultValues: DEFAULT_INPUT_FORM_VALUES,
   });
+
+  const { watch, setValue, getValues } = form;
 
   const formValues = watch();
   const [sellerStep, setSellerStep] = useState<SellerStep>(1);
@@ -757,7 +748,8 @@ export function ForgeDashboard() {
   });
 
   return (
-    <main className="grid h-screen grid-cols-1 gap-px bg-terminal-border lg:grid-cols-[minmax(300px,1fr)_minmax(360px,1.25fr)_minmax(400px,1fr)]">
+    <FormProvider {...form}>
+      <main className="grid h-screen grid-cols-1 gap-px bg-terminal-border lg:grid-cols-[minmax(300px,1fr)_minmax(360px,1.25fr)_minmax(400px,1fr)]">
       <div className="min-h-0 overflow-hidden">
         <InputPanel
         sellerStep={sellerStep}
@@ -909,6 +901,7 @@ export function ForgeDashboard() {
           </motion.div>
         )}
       </AnimatePresence>
-    </main>
+      </main>
+    </FormProvider>
   );
 }

@@ -1,8 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
+import { useFormContext } from "react-hook-form";
 import { Loader2, Sparkles } from "lucide-react";
 import type { AgentLogEntry } from "@/components/forge/agent-activity-log";
 import { IntelSearchPanel } from "@/components/forge/intel-search-panel";
@@ -35,6 +33,7 @@ import {
 } from "@/components/forge/seller-stepper";
 import { WorkflowGuide } from "@/components/forge/workflow-guide";
 import type { PicklistItem } from "@/lib/forge/local-store";
+import type { InputFormValues } from "@/lib/forge/form-schema";
 import { DEWU_TRENDS, GENERAL_TRENDS } from "@/lib/forge/trends";
 import type { LlmModelOption } from "@/lib/ai/models";
 import { DewuSearchHandoff } from "@/components/forge/dewu-search-handoff";
@@ -54,15 +53,6 @@ import type {
   ProductBrief,
   ViralBrief,
 } from "@/lib/forge/types";
-
-const inputFormSchema = z.object({
-  trendId: z.string().min(1, "请选择趋势"),
-  productPaste: z.string().min(10, "商品文案至少 10 个字符"),
-  productLink: z.string().optional(),
-  platform: z.enum(["xiaohongshu", "dewu"]),
-});
-
-export type InputFormState = z.infer<typeof inputFormSchema>;
 
 type InputPanelProps = {
   sellerStep: SellerStep;
@@ -206,20 +196,14 @@ export function InputPanel({
   onExecute,
   onCancel,
 }: InputPanelProps) {
+  // 复用 Dashboard 的唯一表单实例（见 lib/forge/form-schema.ts 注释）：
+  // 本地另建 useForm 会让卖家粘贴的内容进不了流水线。
   const {
     register,
     watch,
     setValue,
     formState: { errors },
-  } = useForm<InputFormState>({
-    resolver: zodResolver(inputFormSchema),
-    defaultValues: {
-      trendId: "dewu-sneaker",
-      productPaste: "",
-      productLink: "",
-      platform: "dewu",
-    },
-  });
+  } = useFormContext<InputFormValues>();
 
   const formValues = watch();
   const imageTooLarge = productImages.some(
