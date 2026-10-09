@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ChevronDown, ChevronRight, Loader2 } from "lucide-react";
@@ -48,7 +48,8 @@ type CopywriterTerminalProps = {
   onGenerateEngage: () => void;
   onRemix: (
     remixType: string,
-    angle?: string
+    angle?: string,
+    mustFix?: string[]
   ) => Promise<string | string[] | null>;
   onCopyTextChange: (text: string) => void;
   posted: PostedRecord[];
@@ -134,11 +135,26 @@ export function CopywriterTerminal({
   const isDewu = lastInput?.platform === "dewu";
   const [extrasOpen, setExtrasOpen] = useState(false);
 
-  async function handleRemix(type: string) {
+  /**
+   * 质检出现"必须改"的问题（如合规不通过）时自动展开折叠区。
+   * 得物视图把 Remix/清单/历史/质检 收在折叠区里，若默认收起，
+   * 卖家会看不到合规风险与待改进清单。
+   */
+  const mustFixCount = critic?.mustFix.length ?? 0;
+  const complianceFailed = critic?.deterministic
+    ? !critic.deterministic.compliancePass
+    : false;
+  const hasBlockingIssues = complianceFailed || mustFixCount > 0;
+
+  useEffect(() => {
+    if (hasBlockingIssues) setExtrasOpen(true);
+  }, [hasBlockingIssues]);
+
+  async function handleRemix(type: string, mustFix?: string[]) {
     setRemixing(true);
     setTitleOptions([]);
     try {
-      const result = await onRemix(type);
+      const result = await onRemix(type, undefined, mustFix);
       if (Array.isArray(result)) {
         setTitleOptions(result);
         toast.success("已生成 3 个标题，点击替换");
@@ -200,6 +216,11 @@ export function CopywriterTerminal({
               onClick={() => setExtrasOpen((o) => !o)}
             >
               Remix · 清单 · 历史 · 质检
+              {hasBlockingIssues && (
+                <span className="ml-auto mr-1 rounded border border-red-500/40 bg-red-500/10 px-1 text-[9px] text-red-300">
+                  {complianceFailed ? "合规未通过" : `${mustFixCount} 项待改进`}
+                </span>
+              )}
               {extrasOpen ? (
                 <ChevronDown className="h-3 w-3" />
               ) : (
@@ -339,6 +360,19 @@ export function CopywriterTerminal({
                             <li key={item}>{item}</li>
                           ))}
                         </ul>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="mt-2 h-6 w-full text-[9px]"
+                          disabled={remixing || !copyText}
+                          onClick={() => handleRemix("revise_mustfix", critic.mustFix)}
+                        >
+                          {remixing ? (
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                          ) : null}
+                          按这 {critic.mustFix.length} 项定向重写（只改问题，不动其余）
+                        </Button>
                       </div>
                     )}
                     <ScoreBar label="Hook" value={critic.scores.hook} />

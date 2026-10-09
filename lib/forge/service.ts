@@ -619,7 +619,11 @@ export function runQualityGateFor(
   const sourceText = [input.productName, input.sellingPoints, input.referenceCopy]
     .filter(Boolean)
     .join("\n");
-  return runQualityGate(copyDraft, { sourceText });
+  return runQualityGate(copyDraft, {
+    sourceText,
+    platform: input.platform,
+    trendKeywords: input.trendContext?.keywords ?? [],
+  });
 }
 
 export async function runCritic(
@@ -766,11 +770,16 @@ export async function runRemix(
     input: ForgeInput;
     creativeConcept?: string;
     angle?: string;
+    mustFix?: string[];
   },
   options?: RunOptions
 ): Promise<{ copyText?: string; titles?: string[] }> {
   if (!isLiveMode()) {
     await delay(400, options?.signal);
+    if (params.remixType === "revise_mustfix") {
+      // MOCK：原样返回，方便 UI/流程验证（真实改写需要 API）
+      return { copyText: params.copyText };
+    }
     if (params.remixType === "regenerate_titles") {
       return {
         titles: [
@@ -783,9 +792,17 @@ export async function runRemix(
     return { copyText: params.copyText };
   }
 
+  if (params.remixType === "revise_mustfix" && !params.mustFix?.length) {
+    throw new Error("定向修订需要提供待改进项");
+  }
+
   const wantsTitles = params.remixType === "regenerate_titles";
   return callAndParse({
-    label: wantsTitles ? "二创·换标题" : "二创·改稿",
+    label: wantsTitles
+      ? "二创·换标题"
+      : params.remixType === "revise_mustfix"
+        ? "二创·定向修订"
+        : "二创·改稿",
     schema: wantsTitles ? remixTitlesResponseSchema : remixCopyResponseSchema,
     call: (extra) =>
       chatComplete(

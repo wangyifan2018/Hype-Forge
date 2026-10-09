@@ -681,7 +681,8 @@ export function ForgeDashboard() {
   const handleRemix = useCallback(
     async (
       remixType: string,
-      angle?: string
+      angle?: string,
+      mustFix?: string[]
     ): Promise<string | string[] | null> => {
       if (!copyText || !lastInput) return null;
       const res = await fetch("/api/forge/remix", {
@@ -690,6 +691,7 @@ export function ForgeDashboard() {
         body: JSON.stringify({
           remixType,
           angle,
+          mustFix,
           copyText,
           input: lastInput,
           creativeConcept: prompts?.creativeConcept,

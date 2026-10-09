@@ -27,10 +27,14 @@ function sseRes(events: unknown[]): Response {
 describe("ForgeDashboard · Step3 表单贯通", () => {
   let calls: CapturedCall[];
   let scanCalls: number;
+  let remixCalls: CapturedCall[];
+  let runEvents: unknown[];
 
   beforeEach(() => {
     calls = [];
     scanCalls = 0;
+    remixCalls = [];
+    runEvents = [{ type: "done" }];
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -68,7 +72,14 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
             url,
             body: JSON.parse(String(init?.body ?? "{}")),
           });
-          return sseRes([{ type: "done" }]);
+          return sseRes(runEvents);
+        }
+        if (url.includes("/api/forge/remix")) {
+          remixCalls.push({
+            url,
+            body: JSON.parse(String(init?.body ?? "{}")),
+          });
+          return jsonRes({ copyText: "修订后的文案" });
         }
         if (url.includes("/api/forge/trends/scan")) {
           scanCalls += 1;
@@ -132,6 +143,59 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
     await waitFor(() =>
       expect(document.body.textContent).toContain("恢复测试标题ABC")
     );
+  });
+
+  it("可按质检的待改进项发起定向重写（人机确认点）", async () => {
+    // 用"刷新恢复上次结果"这条真实路径注入带 mustFix 的质检结果，避免 SSE 时序抖动
+    localStorage.setItem(
+      "hype-forge:last-run",
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        input: {
+          trendId: "dewu-sneaker-heat",
+          productName: "AJ1 北卡蓝",
+          sellingPoints: "到手 749",
+          platform: "dewu",
+        },
+        productBrief: null,
+        viralBrief: null,
+        prompts: null,
+        promptsOptimized: false,
+        copyText:
+          "## 标题\n实测标题\n\n## 正文\n正文内容\n\n## 话题标签\n#好物分享",
+        critic: {
+          scores: { hook: 80, emotion: 80, platformFit: 80, visualAlign: 80 },
+          mustFix: [
+            "结构（必须改）：缺少 ## 话题标签 小节",
+            "合规（必须改）：出现绝对化用语「全网最低」",
+          ],
+          deterministic: {
+            checkedBy: "code",
+            compliancePass: false,
+            complianceScore: 0,
+            antiAiScore: 90,
+            violations: [{ word: "全网最低", severity: "high" }],
+            fabricatedNumbers: [],
+            issues: ["结构（必须改）：缺少 ## 话题标签 小节"],
+          },
+        },
+      })
+    );
+
+    render(<ForgeDashboard />);
+
+    // 得物视图下质检收在折叠区；有阻塞问题时（本例合规未通过）应自动展开，
+    // 因此无需手动点击就能看到"定向重写"。
+
+    expect(document.body.textContent).toContain("合规未通过");
+    fireEvent.click(await screen.findByText(/定向重写/));
+
+    await waitFor(() => expect(remixCalls.length).toBe(1));
+    expect(remixCalls[0].body.remixType).toBe("revise_mustfix");
+    expect(remixCalls[0].body.mustFix).toEqual([
+      "结构（必须改）：缺少 ## 话题标签 小节",
+      "合规（必须改）：出现绝对化用语「全网最低」",
+    ]);
   });
 
   it("情报检索展示服务端真实阶段回执，且不再出现编造的平台抓取过程", async () => {

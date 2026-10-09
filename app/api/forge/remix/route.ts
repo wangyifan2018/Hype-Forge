@@ -14,6 +14,8 @@ const bodySchema = z.object({
   creativeConcept: z.string().optional(),
   angle: z.string().optional(),
   model: llmModelSchema,
+  /** revise_mustfix：待改进项清单 */
+  mustFix: z.array(z.string().max(300)).max(12).optional(),
 });
 
 export async function POST(request: Request) {

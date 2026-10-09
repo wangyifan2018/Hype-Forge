@@ -101,6 +101,8 @@ export const remixTypeSchema = z.enum([
   "more_professional",
   "regenerate_titles",
   "angle",
+  /** 按质检给出的待改进项定向修订（人机确认点：用户点按钮才执行） */
+  "revise_mustfix",
 ]);
 
 export type RemixType = z.infer<typeof remixTypeSchema>;

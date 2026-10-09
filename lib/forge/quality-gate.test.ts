@@ -4,11 +4,14 @@ import { checkCompliance } from "@/lib/forge/compliance-check";
 import type { CriticReport } from "@/lib/forge/types";
 
 const CLEAN_COPY = `## 标题
-这双鞋真的绝了
+北卡蓝通勤实测绝了
 
 ## 正文
-最近入手了这双鞋，拿到手第一感觉是轻，上脚试了 3 天通勤完全不累脚 😮‍💨
-配色是白蓝，我 42 码买的，日常穿搭很好搭。
+【钩子】最近入手了这双北卡蓝，拿到手就上脚试了三天 😮‍💨
+【痛点场景】上班通勤一天走一万步，之前那双磨脚磨得我直皱眉
+【解决方案】这双白蓝配色，我 42 码买的，到手 749，鞋面软但不塌
+【效果可视化】实测三天通勤完全不累脚，穿搭也百搭
+【行动指令】喜欢的可以去主页看看，评论区聊配色
 
 ## 话题标签
 #好物分享 #球鞋穿搭 #通勤鞋 #得物好物`;
@@ -105,5 +108,117 @@ describe("applyGateToCritic", () => {
     expect(merged.mustFix.length).toBeGreaterThan(0);
     // 其它主观维度保留 LLM 评分
     expect(merged.scores.hook).toBe(95);
+  });
+});
+
+describe("runQualityGate · 结构判定（取代模型自评）", () => {
+  it("完整稿：三小节 + 五段式 + 话题充足 → 结构分满分", () => {
+    const gate = runQualityGate(CLEAN_COPY, { platform: "dewu" });
+    expect(gate.scores.structureCheck).toBe(100);
+    expect(gate.scores.hashtagPresent).toBe(100);
+    expect(gate.structure.missingSegments).toEqual([]);
+    expect(gate.issues.join(" ")).not.toContain("结构（必须改）");
+  });
+
+  it("缺话题小节 + 缺两段 → 结构分按缺项扣分并给出具体缺哪段", () => {
+    const broken = `## 标题
+随便写写
+
+## 正文
+【钩子】第一句
+【解决方案】卖点在这里，749 到手
+
+最近入手，上脚试了，绝了 😮‍💨`;
+    const gate = runQualityGate(broken, { platform: "dewu" });
+
+    expect(gate.structure.missingSegments).toEqual([
+      "痛点场景",
+      "效果可视化",
+      "行动指令",
+    ]);
+    // 100 - 缺3段*20 - 缺1个小节*20
+    expect(gate.scores.structureCheck).toBe(20);
+    expect(gate.structure.hashtagCount).toBe(0);
+    expect(gate.scores.hashtagPresent).toBe(0);
+    expect(gate.issues.join(" ")).toContain("缺少 ## 话题标签 小节");
+  });
+
+  it("小红书话题要求 4 个：3 个时不达标，得物同一稿通过", () => {
+    const three = CLEAN_COPY.replace(" #得物好物", "");
+    expect(runQualityGate(three, { platform: "dewu" }).scores.hashtagPresent).toBe(100);
+    const xhs = runQualityGate(three, { platform: "xiaohongshu" });
+    expect(xhs.scores.hashtagPresent).toBe(75);
+    expect(xhs.issues.join(" ")).toContain("小红书建议至少 4 个");
+  });
+
+  it("标题超长会给出建议修改（不判失败）", () => {
+    const long = `${CLEAN_COPY.replace("北卡蓝通勤实测绝了", "这".repeat(40))}`;
+    const gate = runQualityGate(long, { platform: "dewu" });
+    expect(gate.issues.join(" ")).toContain("标题（建议改）");
+  });
+
+  it("趋势关键词覆盖：命中率决定 searchKeywordDensity", () => {
+    const full = runQualityGate(CLEAN_COPY, {
+      platform: "dewu",
+      trendKeywords: ["北卡蓝", "通勤"],
+    });
+    expect(full.scores.searchKeywordDensity).toBe(100);
+
+    const half = runQualityGate(CLEAN_COPY, {
+      platform: "dewu",
+      trendKeywords: ["北卡蓝", "露营"],
+    });
+    expect(half.scores.searchKeywordDensity).toBe(50);
+    // 命中率 50% 只记录分数，不额外报问题
+    expect(half.issues.join(" ")).not.toContain("搜索词覆盖");
+
+    const low = runQualityGate(CLEAN_COPY, {
+      platform: "dewu",
+      trendKeywords: ["北卡蓝", "露营", "飞盘"],
+    });
+    expect(low.scores.searchKeywordDensity).toBe(33);
+    expect(low.issues.join(" ")).toContain("搜索词覆盖");
+
+    // 没有趋势关键词时不判定，保留模型评分
+    expect(
+      runQualityGate(CLEAN_COPY, { platform: "dewu" }).scores
+        .searchKeywordDensity
+    ).toBeUndefined();
+  });
+});
+
+describe("applyGateToCritic · 覆盖范围", () => {
+  it("结构/话题/搜索词也一并由代码覆盖", () => {
+    const llmReport: CriticReport = {
+      scores: {
+        hook: 95,
+        emotion: 90,
+        platformFit: 90,
+        visualAlign: 90,
+        hashtagPresent: 99,
+        viralPotential: 95,
+        searchKeywordDensity: 99,
+        scrollStopPower: 92,
+        antiAiScore: 99,
+        structureCheck: 99,
+        complianceCheck: 100,
+      },
+      mustFix: [],
+    };
+
+    const merged = applyGateToCritic(
+      llmReport,
+      runQualityGate("## 标题\n标题\n\n## 正文\n没有结构的正文", {
+        platform: "dewu",
+        trendKeywords: ["露营"],
+      })
+    );
+
+    expect(merged.scores.structureCheck).toBe(0);
+    expect(merged.scores.hashtagPresent).toBe(0);
+    expect(merged.scores.searchKeywordDensity).toBe(0);
+    // 主观项仍保留模型评分
+    expect(merged.scores.hook).toBe(95);
+    expect(merged.scores.emotion).toBe(90);
   });
 });
