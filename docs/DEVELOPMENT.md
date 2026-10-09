@@ -47,6 +47,13 @@ npm run dev:clean
   `use-forge-pipeline` 自动恢复。**不要把生成结果只放在 React state 里。**
 - **学习回流**：`strategy-learner.learnFromHistory(posted)` → `ForgeInput.learnContext` → copywriter system。
   改动发帖记录字段（`title` / `hookFramework` / `platform` / `engagement`）时注意别断掉这条链。
+- **能判定的就不要问模型**：合规、去 AI 味、结构、搜索词覆盖、数字事实核对都由
+  `lib/forge/quality-gate.ts` 用代码判定并覆盖 LLM 自评；主观项（钩子/情绪）才留给模型。
+- **模型调用要能自愈与可计量**：新增/修改调用点时请走 `lib/ai/llm.ts` 单点——
+  它负责超时、回退链（`lib/ai/model-fallback.ts`）、结构化日志与用量回报
+  （`lib/ai/usage-summary.ts`），绕过单点会丢掉这些能力。
+- **情报可信度**：`lib/forge/intel-confidence.ts` 依据 sources 计算 needsVerify；
+  新增情报字段时请保持"可核验优先"的排序语义。
 - **情报过程必须真实**：情报阶段一律由服务端 `stages`（`lib/forge/intel-stages.ts`）回执驱动，
   **不要**再用 `delayMs`/`setTimeout` 编造阶段或分析文案（历史上曾出现"采集抖音热搜"
   "扫描得物社区"等 13 个假阶段，而背后只有 1 次联网调用）。

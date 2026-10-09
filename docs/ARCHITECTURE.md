@@ -47,7 +47,13 @@ flowchart LR
 | `lib/forge/form-schema.ts` | React Hook Form Zod schema 与 resolver |
 | `lib/forge/keyword-extractor.ts` | nodejieba 关键词提取（TF-IDF + 停用词过滤） |
 | `lib/forge/visual-normalize.ts` | 视觉 JSON 容错补齐（含去水印、playbook 长度） |
-| `lib/forge/quality-gate.ts` | 确定性质量门：合规/AI 味/数字事实核对（覆盖 LLM 自评） |
+| `lib/forge/quality-gate.ts` | 确定性质量门：合规/去 AI 味/结构/搜索词/数字事实核对（覆盖 LLM 自评）+ 多轮择优比较 |
+| `lib/forge/intel-confidence.ts` | 情报可信度：来源日期解析、needsVerify、"可核验优先"排序 |
+| `lib/forge/intel-stages.ts` | 情报真实阶段回执（替代定时动画） |
+| `lib/forge/edit-preferences.ts` | 改稿偏好学习（Remix 选择 / 挑标题 → 可解释规则） |
+| `lib/forge/link-safety.ts` | 好物链接可达性探测（含 SSRF 防护） |
+| `lib/ai/model-fallback.ts` | 模型回退链（可重试错误才回退、取消不回退） |
+| `lib/ai/usage-summary.ts` | 每次执行的调用次数/耗时/token 汇总 |
 | `lib/forge/run-store.ts` | 最近一次 Execute 结果快照（localStorage，刷新可恢复） |
 | `lib/forge/strategy-learner.ts` | 互动数据 → 爆款判定 → ICL few-shot（回流文案 prompt） |
 | `lib/ai/prompts/` | 各 Agent system/user prompt |
