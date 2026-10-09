@@ -26,9 +26,11 @@ function sseRes(events: unknown[]): Response {
 
 describe("ForgeDashboard · Step3 表单贯通", () => {
   let calls: CapturedCall[];
+  let scanCalls: number;
 
   beforeEach(() => {
     calls = [];
+    scanCalls = 0;
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -68,6 +70,32 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
           });
           return sseRes([{ type: "done" }]);
         }
+        if (url.includes("/api/forge/trends/scan")) {
+          scanCalls += 1;
+          return jsonRes({
+            trends: [],
+            cached: false,
+            searchedAt: new Date().toISOString(),
+            elapsedMs: 8420,
+            stages: [
+              { id: "cache", label: "查询热点情报缓存", detail: "未命中，走联网检索", ms: 1, status: "ok" },
+              { id: "search", label: "联网检索公开讨论", detail: "模型 deepseek-v4.1-flash", ms: 8400, status: "ok" },
+              { id: "parse", label: "结构化解析与归一", detail: "得到 0 条场景 · 0 条带来源", ms: 19, status: "ok" },
+            ],
+          });
+        }
+        if (url.includes("/api/forge/dewu/scout")) {
+          return jsonRes({
+            leads: [],
+            cached: false,
+            searchedAt: new Date().toISOString(),
+            elapsedMs: 6100,
+            stages: [
+              { id: "cache", label: "查询爆款情报缓存", detail: "未命中，走联网检索", ms: 1, status: "ok" },
+              { id: "search", label: "联网检索爆款方向", detail: "模型 deepseek-v4.1-flash", ms: 6100, status: "ok" },
+            ],
+          });
+        }
         return jsonRes({});
       })
     );
@@ -104,6 +132,22 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
     await waitFor(() =>
       expect(document.body.textContent).toContain("恢复测试标题ABC")
     );
+  });
+
+  it("情报检索展示服务端真实阶段回执，且不再出现编造的平台抓取过程", async () => {
+    render(<ForgeDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: /智能搜索/ }));
+
+    await waitFor(() => expect(scanCalls).toBe(1));
+    await waitFor(() =>
+      expect(document.body.textContent).toContain("联网检索公开讨论")
+    );
+    // 真实耗时来自服务端 stages
+    expect(document.body.textContent).toContain("8.4s");
+    // 编造的"逐平台抓取"过程不得再出现
+    expect(document.body.textContent).not.toContain("采集抖音热搜");
+    expect(document.body.textContent).not.toContain("扫描得物社区");
   });
 
   it("粘贴的商品名/卖点/链接会进入 /api/forge/run 请求体", async () => {

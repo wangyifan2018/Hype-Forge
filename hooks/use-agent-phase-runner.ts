@@ -7,12 +7,12 @@ import {
   type AgentPhase,
   type AgentPhaseId,
 } from "@/lib/forge/agent-phases";
+import { getInsightIcon, type InsightEntry } from "@/lib/forge/intel-analysis";
 import {
-  buildPhaseInsight,
-  getInsightIcon,
-  type InsightEntry,
-  type IntelAnalysisContext,
-} from "@/lib/forge/intel-analysis";
+  formatStageMs,
+  type IntelStage,
+  type IntelStageId,
+} from "@/lib/forge/intel-stages";
 
 function newLogId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -26,7 +26,6 @@ export function useAgentPhaseRunner() {
   const [insights, setInsights] = useState<InsightEntry[]>([]);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const abortRef = useRef<AbortController | null>(null);
-  const analysisCtxRef = useRef<IntelAnalysisContext>({ pipeline: "full" });
 
   const clearTimers = useCallback(() => {
     timersRef.current.forEach(clearTimeout);
@@ -66,33 +65,56 @@ export function useAgentPhaseRunner() {
     append("用户已停止情报检索", "warn");
   }, [append, clearTimers]);
 
-  const pushInsight = useCallback((phaseId: AgentPhaseId) => {
-    const line = buildPhaseInsight(phaseId, analysisCtxRef.current);
-    if (line.startsWith("跳过")) return;
-    setInsights((prev) => {
-      if (prev.some((p) => p.text === line)) return prev;
-      return [
-        ...prev,
-        {
-          id: newLogId(),
-          text: line,
-          icon: getInsightIcon(phaseId),
-          phaseId,
-        },
-      ];
-    });
-  }, []);
+  /**
+   * 写入服务端返回的**真实**阶段回执：阶段名、说明与真实耗时。
+   * 这是取代"13 个 delayMs 动画阶段"的唯一数据源，界面不再编造过程。
+   */
+  const recordStages = useCallback(
+    (stages: IntelStage[] | undefined) => {
+      if (!stages?.length) return;
+      const iconFor: Record<IntelStageId, AgentPhaseId> = {
+        cache: "parse_scope",
+        search: "search_web",
+        parse: "cluster_topics",
+        rank: "rank_leads",
+        fallback: "done",
+        mock: "connect",
+      };
+      setInsights((prev) => {
+        const next = [...prev];
+        for (const stage of stages) {
+          const phaseId = iconFor[stage.id] ?? "done";
+          const text = `${stage.label}${stage.detail ? `（${stage.detail}）` : ""} · ${formatStageMs(stage.ms)}`;
+          if (next.some((p) => p.text === text)) continue;
+          next.push({
+            id: newLogId(),
+            text,
+            icon: getInsightIcon(phaseId),
+            phaseId,
+          });
+        }
+        return next;
+      });
+      for (const stage of stages) {
+        append(
+          `${stage.status === "warn" ? "⚠ " : "· "}${stage.label}${
+            stage.detail ? `：${stage.detail}` : ""
+          }（${formatStageMs(stage.ms)}）`,
+          stage.status === "warn" ? "warn" : "info"
+        );
+      }
+    },
+    [append]
+  );
 
   const runPhases = useCallback(
     async (
       phases: AgentPhase[],
-      task: (signal: AbortSignal) => Promise<void>,
-      analysisCtx?: IntelAnalysisContext
+      task: (signal: AbortSignal) => Promise<void>
     ) => {
       clearTimers();
       const ac = new AbortController();
       abortRef.current = ac;
-      if (analysisCtx) analysisCtxRef.current = analysisCtx;
 
       setRunning(true);
       setActivePhases(phases);
@@ -108,7 +130,6 @@ export function useAgentPhaseRunner() {
           if (ac.signal.aborted) return;
           setPhaseIndex(index);
           append(phase.message, "info");
-          pushInsight(phase.id);
         }, delay);
         timersRef.current.push(t);
       });
@@ -124,7 +145,7 @@ export function useAgentPhaseRunner() {
         setRunning(false);
       }
     },
-    [append, clearTimers, pushInsight]
+    [append, clearTimers]
   );
 
   return {
@@ -134,6 +155,7 @@ export function useAgentPhaseRunner() {
     phaseIndex,
     insights,
     append,
+    recordStages,
     reset,
     cancel,
     runPhases,

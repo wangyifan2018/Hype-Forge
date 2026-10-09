@@ -47,6 +47,11 @@ import {
 } from "@/lib/ai/prompts/viral-planner";
 import { extractJson } from "@/lib/forge/parse-json";
 import { applyGateToCritic, runQualityGate } from "@/lib/forge/quality-gate";
+import {
+  measureStage,
+  pushStage,
+  type IntelStage,
+} from "@/lib/forge/intel-stages";
 import { normalizeVisualPrompts } from "@/lib/forge/visual-normalize";
 import { rankTitleCandidates } from "@/lib/forge/title-scorer";
 import { cleanCopyDraft } from "@/lib/forge/clean-copy";
@@ -108,6 +113,10 @@ export type IntelFallbackMeta = {
   searchedAt: string;
   fallback?: boolean;
   fallbackReason?: string;
+  /** 实际发生的阶段与耗时（前端如实展示，替代此前的定时动画） */
+  stages?: IntelStage[];
+  /** 本次检索总耗时（毫秒） */
+  elapsedMs?: number;
 };
 
 export type ProductScoutParams = {
@@ -158,17 +167,27 @@ export async function runProductScout(
     autoScope = "category",
     model,
   } = params;
+  const startedAt = Date.now();
   const trendId = selectedTrend?.id;
+  const stages: IntelStage[] = [];
   // 缓存按「有效模型」隔离：切模型后结论会变，不能吃旧模型的缓存
   const effectiveModel = resolveRequestModel(model);
 
   // MOCK 模式不读写情报缓存：示例数据不该占用真实情报的缓存位
   if (!isLiveMode()) {
     await delay(800, signal);
+    pushStage(stages, {
+      id: "mock",
+      label: "MOCK 模式",
+      detail: "未调用模型，返回示例数据",
+      status: "ok",
+    });
     return {
       leads: sortLeadsByPriority(mockProductLeads()),
       cached: false,
       searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
     };
   }
 
@@ -176,6 +195,7 @@ export async function runProductScout(
     clearCachedLeads(categoryHint, trendId, discoveryMode, autoScope, effectiveModel);
   }
 
+  const cacheStart = Date.now();
   const cached = getCachedLeads(
     categoryHint,
     trendId,
@@ -183,45 +203,81 @@ export async function runProductScout(
     autoScope,
     effectiveModel
   );
+  pushStage(stages, {
+    id: "cache",
+    label: "查询爆款情报缓存",
+    detail: cached ? "命中缓存" : "未命中，走联网检索",
+    ms: Date.now() - cacheStart,
+    status: "ok",
+  });
   if (cached) {
     return {
       leads: sortLeadsByPriority(cached),
       cached: true,
       searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
     };
   }
 
   try {
-    const raw = await chatComplete(
-      [
-        {
-          role: "user",
-          content: buildProductScoutUserPrompt(categoryHint, {
-            categoryLabel,
-            selectedTrend,
-            discoveryMode,
-            autoScope,
-          }),
-        },
-      ],
-      { search: true, signal, system: PRODUCT_SCOUT_SYSTEM, model }
+    const raw = await measureStage(
+      stages,
+      "search",
+      "联网检索爆款方向",
+      () =>
+        chatComplete(
+          [
+            {
+              role: "user",
+              content: buildProductScoutUserPrompt(categoryHint, {
+                categoryLabel,
+                selectedTrend,
+                discoveryMode,
+                autoScope,
+              }),
+            },
+          ],
+          { search: true, signal, system: PRODUCT_SCOUT_SYSTEM, model }
+        ),
+      () => `模型 ${effectiveModel}`
     );
-    const json = extractJson(raw) as
-      | { leads?: HotProductLead[] }
-      | HotProductLead[];
-    const leads = sortLeadsByPriority(
-      Array.isArray(json)
-        ? json
-        : productScoutResponseSchema.parse(json).leads
+    const leads = await measureStage(
+      stages,
+      "parse",
+      "结构化解析与排序",
+      async () => {
+        const json = extractJson(raw) as
+          | { leads?: HotProductLead[] }
+          | HotProductLead[];
+        return sortLeadsByPriority(
+          Array.isArray(json)
+            ? json
+            : productScoutResponseSchema.parse(json).leads
+        );
+      },
+      (list) => `得到 ${list.length} 条线索`
     );
     setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope, effectiveModel);
-    return { leads, cached: false, searchedAt: new Date().toISOString() };
+    return {
+      leads,
+      cached: false,
+      searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
+    };
   } catch (error) {
     const reason = mapLlmError(error);
     console.warn(
       `[forge/intel] 爆款情报联网搜索失败，降级为示例数据：${reason}`
     );
     const leads = sortLeadsByPriority(mockProductLeads());
+    pushStage(stages, {
+      id: "fallback",
+      label: "降级为示例数据",
+      detail: reason,
+      status: "warn",
+    });
     // 不写入缓存：避免一次瞬时故障把示例数据缓存住，让恢复后的扫描继续拿到 mock
     return {
       leads,
@@ -229,6 +285,8 @@ export async function runProductScout(
       searchedAt: new Date().toISOString(),
       fallback: true,
       fallbackReason: reason,
+      stages,
+      elapsedMs: Date.now() - startedAt,
     };
   }
 }
@@ -247,16 +305,26 @@ export async function runTrendScan(
     model,
   } = params;
 
+  const startedAt = Date.now();
+  const stages: IntelStage[] = [];
   // 缓存按「有效模型」隔离：切模型后结论会变，不能吃旧模型的缓存
   const effectiveModel = resolveRequestModel(model);
 
   // MOCK 模式不读写情报缓存：示例数据不该占用真实情报的缓存位
   if (!isLiveMode()) {
     await delay(800, signal);
+    pushStage(stages, {
+      id: "mock",
+      label: "MOCK 模式",
+      detail: "未调用模型，返回示例数据",
+      status: "ok",
+    });
     return {
       trends: mockHotTrends(platform),
       cached: false,
       searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
     };
   }
 
@@ -264,6 +332,7 @@ export async function runTrendScan(
     clearCachedTrends(platform, categoryHint, discoveryMode, autoScope, effectiveModel);
   }
 
+  const cacheStart = Date.now();
   const cached = getCachedTrends(
     platform,
     categoryHint,
@@ -271,38 +340,83 @@ export async function runTrendScan(
     autoScope,
     effectiveModel
   );
+  pushStage(stages, {
+    id: "cache",
+    label: "查询热点情报缓存",
+    detail: cached ? "命中缓存" : "未命中，走联网检索",
+    ms: Date.now() - cacheStart,
+    status: "ok",
+  });
   if (cached) {
-    return { trends: cached, cached: true, searchedAt: new Date().toISOString() };
+    return {
+      trends: cached,
+      cached: true,
+      searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
+    };
   }
 
   try {
-    const raw = await chatComplete(
-      [
-        {
-          role: "user",
-          content: buildTrendRadarUserPrompt(
-            platform,
-            categoryHint,
-            categoryLabel,
-            discoveryMode,
-            autoScope
-          ),
-        },
-      ],
-      { search: true, signal, system: TREND_RADAR_SYSTEM, model }
+    const raw = await measureStage(
+      stages,
+      "search",
+      "联网检索公开讨论",
+      () =>
+        chatComplete(
+          [
+            {
+              role: "user",
+              content: buildTrendRadarUserPrompt(
+                platform,
+                categoryHint,
+                categoryLabel,
+                discoveryMode,
+                autoScope
+              ),
+            },
+          ],
+          { search: true, signal, system: TREND_RADAR_SYSTEM, model }
+        ),
+      () => `模型 ${effectiveModel}`
     );
-    const json = extractJson(raw) as { trends?: HotTrendCard[] } | HotTrendCard[];
-    const trends = Array.isArray(json)
-      ? json
-      : hotTrendScanResponseSchema.parse(json).trends;
+    const trends = await measureStage(
+      stages,
+      "parse",
+      "结构化解析与归一",
+      async () => {
+        const json = extractJson(raw) as
+          | { trends?: HotTrendCard[] }
+          | HotTrendCard[];
+        return Array.isArray(json)
+          ? json
+          : hotTrendScanResponseSchema.parse(json).trends;
+      },
+      (list) => {
+        const withSources = list.filter((t) => (t.sources?.length ?? 0) > 0).length;
+        return `得到 ${list.length} 条场景 · ${withSources} 条带来源`;
+      }
+    );
     setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope, effectiveModel);
-    return { trends, cached: false, searchedAt: new Date().toISOString() };
+    return {
+      trends,
+      cached: false,
+      searchedAt: new Date().toISOString(),
+      stages,
+      elapsedMs: Date.now() - startedAt,
+    };
   } catch (error) {
     const reason = mapLlmError(error);
     console.warn(
       `[forge/intel] 热点雷达联网搜索失败，降级为示例数据：${reason}`
     );
     const trends = mockHotTrends(platform);
+    pushStage(stages, {
+      id: "fallback",
+      label: "降级为示例数据",
+      detail: reason,
+      status: "warn",
+    });
     // 不写入缓存：避免一次瞬时故障把示例数据缓存住，让恢复后的扫描继续拿到 mock
     return {
       trends,
@@ -310,6 +424,8 @@ export async function runTrendScan(
       searchedAt: new Date().toISOString(),
       fallback: true,
       fallbackReason: reason,
+      stages,
+      elapsedMs: Date.now() - startedAt,
     };
   }
 }

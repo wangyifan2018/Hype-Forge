@@ -7,6 +7,16 @@ import type {
   IntelDiscoveryMode,
 } from "@/lib/forge/intel-discovery";
 import type { HotProductLead, HotTrendCard } from "@/lib/forge/types";
+import type { IntelStage } from "@/lib/forge/intel-stages";
+
+/** 爆款检索返回：数据 + 服务端真实阶段回执 */
+export type ScoutMeta = {
+  items: HotProductLead[];
+  stages: IntelStage[];
+  cached: boolean;
+  fallback: boolean;
+  elapsedMs: number;
+};
 
 export type ScoutRequest = {
   categoryHint: string;
@@ -49,6 +59,9 @@ export function useProductScout() {
         /** true = 服务端联网调用失败，返回的是示例数据 */
         fallback?: boolean;
         fallbackReason?: string;
+        /** 服务端实际发生的阶段与耗时 */
+        stages?: IntelStage[];
+        elapsedMs?: number;
       };
       setFallback(Boolean(data.fallback));
       if (data.fallback) {
@@ -59,7 +72,13 @@ export function useProductScout() {
       setLeads(data.leads);
       setScoutCached(Boolean(data.cached));
       setSearchedAt(data.searchedAt ?? new Date().toISOString());
-      return data.leads;
+      return {
+        items: data.leads,
+        stages: data.stages ?? [],
+        cached: Boolean(data.cached),
+        fallback: Boolean(data.fallback),
+        elapsedMs: data.elapsedMs ?? 0,
+      } satisfies ScoutMeta;
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") throw error;
       throw error;

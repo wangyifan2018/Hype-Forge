@@ -451,10 +451,9 @@ export function IntelRadarPanel({
           size="sm"
           className="h-7 gap-1 border-red-500/40 px-2 text-[10px] text-red-300 hover:bg-red-500/10 hover:text-red-200"
           onClick={onStop}
-          disabled={!running}
         >
           <Square className="h-3 w-3 fill-current" />
-          停止
+          {running ? "停止" : "关闭"}
         </Button>
       </header>
 

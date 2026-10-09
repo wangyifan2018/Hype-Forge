@@ -26,10 +26,7 @@ import {
   usePostedStore,
   usePublishChecklistStore,
 } from "@/hooks/use-forge-store";
-import {
-  buildSmartIntelPhases,
-  SCOUT_PRODUCT_PHASES,
-} from "@/lib/forge/agent-phases";
+import { buildIntelRunningPhases } from "@/lib/forge/agent-phases";
 import { intelPipelineTitle } from "@/lib/forge/intel-analysis";
 import { useProductScout } from "@/hooks/use-product-scout";
 import { useTrendScan } from "@/hooks/use-trend-scan";
@@ -310,17 +307,27 @@ export function ForgeDashboard() {
   );
 
   const intelBusy = smartIntelRunning || scouting || scanning;
-  const intelShowcase = intelAgent.running || intelBusy;
+  /**
+   * 情报雷达面板的显隐。
+   * 运行中自动展开；**跑完不再自动收起**——真实阶段回执、耗时、来源与趋势卡
+   * 都在这个面板里，收起等于把刚花钱换来的情报结论藏掉。用户点「关闭」才收起。
+   */
+  const [intelShowcase, setIntelShowcase] = useState(false);
 
   const handleStopIntel = useCallback(() => {
-    intelAgent.cancel();
-    setSmartIntelRunning(false);
-    setSmartIntelRunMode(null);
-    toast.info("已停止情报检索");
-  }, [intelAgent]);
+    if (intelAgent.running || intelBusy) {
+      intelAgent.cancel();
+      setSmartIntelRunning(false);
+      setSmartIntelRunMode(null);
+      toast.info("已停止情报检索");
+      return;
+    }
+    setIntelShowcase(false);
+  }, [intelAgent, intelBusy]);
 
   const handleScoutProducts = useCallback(
     async (forceRefresh?: boolean, trendOverride?: HotTrendCard | null) => {
+      setIntelShowcase(true);
       const trend = trendOverride ?? trendContext;
       const scoutAutoScope =
         intelDiscoveryMode === "auto" ? intelAutoScope : "category";
@@ -335,9 +342,9 @@ export function ForgeDashboard() {
           : workspaceCtx.categoryLabel;
       try {
         await intelAgent.runPhases(
-          SCOUT_PRODUCT_PHASES,
+          buildIntelRunningPhases("scout"),
           async (signal) => {
-            const result = await scoutProducts(
+            const scout = await scoutProducts(
               {
                 categoryHint: hint,
                 categoryLabel: scoutLabel,
@@ -349,6 +356,8 @@ export function ForgeDashboard() {
               },
               signal
             );
+          intelAgent.recordStages(scout.stages);
+          const result = scout.items;
           const top = result[0];
           intelAgent.append(
             top
@@ -357,13 +366,6 @@ export function ForgeDashboard() {
             "success"
           );
           if (result.length > 0) setSellerStep(2);
-          },
-          {
-            pipeline: "scout",
-            discoveryMode: intelDiscoveryMode,
-            autoScope: scoutAutoScope,
-            categoryLabel: scoutLabel,
-            forgeMode: mode,
           }
         );
         toast.success(
@@ -413,19 +415,11 @@ export function ForgeDashboard() {
           ? "全站（抖音+小红书+得物）"
           : workspaceCtx.categoryLabel;
 
-      const analysisCtx = {
-        pipeline: "full" as const,
-        discoveryMode,
-        autoScope,
-        categoryLabel: intelCategoryLabel,
-        forgeMode: mode,
-      };
-
       try {
         await intelAgent.runPhases(
-          buildSmartIntelPhases({ autoScope }),
+          buildIntelRunningPhases("trend"),
           async (signal) => {
-            const trends = await scan(
+            const scanResult = await scan(
               {
                 platform: formValues.platform,
                 categoryHint: scanHint,
@@ -437,6 +431,8 @@ export function ForgeDashboard() {
               },
               signal
             );
+            intelAgent.recordStages(scanResult.stages);
+            const trends = scanResult.items;
             trendsCount = trends.length;
             const top = trends[0];
             if (top) {
@@ -448,7 +444,7 @@ export function ForgeDashboard() {
               selectedTrend: top ?? null,
               autoScope,
             });
-            const leads = await scoutProducts(
+            const scoutResult = await scoutProducts(
               {
                 categoryHint: scoutHint,
                 categoryLabel: intelCategoryLabel,
@@ -460,6 +456,8 @@ export function ForgeDashboard() {
               },
               signal
             );
+            intelAgent.recordStages(scoutResult.stages);
+            const leads = scoutResult.items;
             leadsCount = leads.length;
             setSellerStep(2);
             const modeLabel =
@@ -468,8 +466,7 @@ export function ForgeDashboard() {
               `${modeLabel}完成 · 场景 ${trendsCount} · 爆款 ${leadsCount}${top ? ` · 首推场景「${top.title}」` : ""}`,
               "success"
             );
-          },
-          analysisCtx
+          }
         );
         toast.success(
           `${discoveryMode === "auto" ? "智能搜索" : "按线索搜"}完成：${trendsCount} 个场景 + ${leadsCount} 条爆款。请到 Step2 复制关键词去得物验证`
@@ -500,15 +497,15 @@ export function ForgeDashboard() {
     ]
   );
 
-  const handleAutoIntel = useCallback(
-    () => runIntelPipeline("auto"),
-    [runIntelPipeline]
-  );
+  const handleAutoIntel = useCallback(() => {
+    setIntelShowcase(true);
+    return runIntelPipeline("auto");
+  }, [runIntelPipeline]);
 
-  const handleClueIntel = useCallback(
-    () => runIntelPipeline("manual"),
-    [runIntelPipeline]
-  );
+  const handleClueIntel = useCallback(() => {
+    setIntelShowcase(true);
+    return runIntelPipeline("manual");
+  }, [runIntelPipeline]);
 
   const handleSelectTrend = useCallback((trend: HotTrendCard) => {
     setValue("trendId", trend.id);
