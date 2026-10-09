@@ -44,8 +44,9 @@ ${frameworkGuide}
 ${hookFormula}`;
 
   const titleCandidatesBlock = viralBrief?.titleCandidates && viralBrief.titleCandidates.length > 0
-    ? `使用以下已评分的标题候选（按评分排序），选用评分最高的作为主标题：
-${viralBrief.titleCandidates.map((c, i) => `${i + 1}. ${c.title}（${c.hookType}，评分${c.estimatedScore}）`).join("\n")}`
+    ? `使用以下标题候选（已按规则分排序：数字/疑问/情绪等特征命中情况，非语义质量评分），
+选用规则分最高者作为主标题，并自行判断它是否贴合商品：
+${viralBrief.titleCandidates.map((c, i) => `${i + 1}. ${c.title}（${c.hookType}，规则分${c.estimatedScore}）`).join("\n")}`
     : `输出3个候选标题（用 --- 分隔），每个≤20字，分别标注使用的角度：
 - 角度A：${viralBrief?.titleAngles[0] ?? "场景冲击"}
 - 角度B：${viralBrief?.titleAngles[1] ?? "卖点直击"}

@@ -45,7 +45,11 @@ export function scoreTitle(title: string, hookType: string): number {
 }
 
 /**
- * 对标题候选进行排序和筛选
+ * 对标题候选进行排序和筛选。
+ *
+ * ⚠️ 注意：`estimatedScore` 是**规则查表**得到的启发式分数（依据 hookType 与
+ * 数字/疑问/情绪等特征），不是语义质量评估——它会覆盖模型自评的 estimatedScore。
+ * 因此展示给用户/写进 prompt 时必须说明是"规则分"，不要当成内容质量结论。
  */
 export function rankTitleCandidates(candidates: TitleCandidate[]): TitleCandidate[] {
   return [...candidates]
