@@ -230,6 +230,7 @@ export function useForgePipeline() {
         }
 
         let streamingCopy = false;
+        let sawDone = false;
 
         await consumeSseStream<ForgeRunEvent>(
           runRes,
@@ -269,6 +270,7 @@ export function useForgePipeline() {
                 setCopyText((prev) => prev + event.text);
                 break;
               case "done":
+                sawDone = true;
                 setStatus("done");
                 setProgressStep(null);
                 break;
@@ -283,7 +285,16 @@ export function useForgePipeline() {
           signal
         );
 
-        setStatus((s) => (s === "running" ? "done" : s));
+        // 连接被中途掐断时不能当作成功：此前只要流结束就置 done，
+        // 结果可能是半截文案，而界面显示"完成"。
+        if (!sawDone && !signal.aborted) {
+          const message = "流式连接提前结束，结果可能不完整，请重试";
+          setStatus("error");
+          setLastError((prev) => prev ?? { message });
+          appendLog(message, "warn");
+        } else {
+          setStatus((s) => (s === "running" ? "done" : s));
+        }
         setProgressStep(null);
       } catch (error) {
         if ((error as Error).name === "AbortError") {

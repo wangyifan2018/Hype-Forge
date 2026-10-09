@@ -36,6 +36,18 @@ npm run dev:clean
 
 > 百炼 `enable_search` 只在**流式**模式下生效；非流式调用会静默忽略搜索参数。
 
+## 可观测性与质量门
+
+- **调用遥测**：`lib/ai/llm.ts` 单点输出结构化日志（`{"scope":"llm","id","model","mode","ms","ok","usage"}`），
+  失败为 `console.warn`；超时用 `FORGE_LLM_TIMEOUT_MS`（默认 180s）。
+- **确定性质量门**：`lib/forge/quality-gate.ts` 用代码判定合规（`compliance-check`）与去 AI 味
+  （`anti-ai-detect`），**覆盖** LLM 自评的 `complianceCheck` / `antiAiScore`，并做「文案数字必须来自用户原文」
+  的事实核对。改动 Critic 时请保持这一分层：主观维度交给模型，可判定的维度交给代码。
+- **结果持久化**：`lib/forge/run-store.ts` 保存最近一次运行的输入/方案/文案/质检；刷新后
+  `use-forge-pipeline` 自动恢复。**不要把生成结果只放在 React state 里。**
+- **学习回流**：`strategy-learner.learnFromHistory(posted)` → `ForgeInput.learnContext` → copywriter system。
+  改动发帖记录字段（`title` / `hookFramework` / `platform` / `engagement`）时注意别断掉这条链。
+
 ## 如何改 Step3 UI
 
 - **表单管理**：使用 React Hook Form（RHF）

@@ -4,6 +4,9 @@ export function encodeSseEvent(event: StreamEvent | ForgeRunEvent): string {
   return `data: ${JSON.stringify(event)}\n\n`;
 }
 
+/** 空闲心跳间隔：长步骤（如思考模式下的文案生成）期间保持连接不被网关掐断 */
+const HEARTBEAT_MS = 15_000;
+
 export function createSseStream<T extends StreamEvent | ForgeRunEvent>(
   generator: (signal: AbortSignal) => AsyncGenerator<T>,
   requestSignal?: AbortSignal
@@ -16,6 +19,17 @@ export function createSseStream<T extends StreamEvent | ForgeRunEvent>(
 
       const onAbort = () => abort.abort();
       requestSignal?.addEventListener("abort", onAbort);
+
+      let closed = false;
+      const heartbeat = setInterval(() => {
+        if (closed) return;
+        try {
+          // SSE 注释行：客户端会忽略，仅用于保活
+          controller.enqueue(encoder.encode(": ping\n\n"));
+        } catch {
+          // 流已关闭
+        }
+      }, HEARTBEAT_MS);
 
       try {
         for await (const event of generator(abort.signal)) {
@@ -34,6 +48,8 @@ export function createSseStream<T extends StreamEvent | ForgeRunEvent>(
           );
         }
       } finally {
+        closed = true;
+        clearInterval(heartbeat);
         requestSignal?.removeEventListener("abort", onAbort);
         controller.close();
       }

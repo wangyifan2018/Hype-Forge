@@ -35,11 +35,52 @@ export function getBaseUrl(): string {
 }
 
 const warned = new Set<string>();
+const MAX_WARNED = 50;
 
 function warnOnce(message: string): void {
   if (warned.has(message)) return;
+  // 上限保护：模型名来自请求体，不能让它把 Set 撑成无界内存
+  if (warned.size >= MAX_WARNED) return;
   warned.add(message);
   console.warn(`[llm] ${message}`);
+}
+
+/** 单次调用的默认超时（毫秒），可用 FORGE_LLM_TIMEOUT_MS 覆盖 */
+function getTimeoutMs(): number {
+  const raw = Number(process.env.FORGE_LLM_TIMEOUT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : 180_000;
+}
+
+/** usage 是 PromiseLike，取不到时不影响主流程 */
+async function safeUsage(value: PromiseLike<unknown>): Promise<unknown> {
+  try {
+    return await value;
+  } catch {
+    return undefined;
+  }
+}
+
+function newCallId(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+/**
+ * 结构化调用日志（单点覆盖全部 LLM 调用）。
+ * 之前全链路没有 requestId / 耗时 / token 记账，出问题只能靠猜。
+ */
+function logCall(entry: {
+  id: string;
+  model: string;
+  mode: "text" | "object" | "search" | "stream";
+  ms: number;
+  ok: boolean;
+  usage?: unknown;
+  finishReason?: string;
+  error?: string;
+}): void {
+  const line = JSON.stringify({ scope: "llm", ...entry });
+  if (entry.ok) console.info(line);
+  else console.warn(line);
 }
 
 /**
@@ -173,12 +214,15 @@ async function streamToString(options: {
   // 流式请求的失败（如 401/429）不会抛到 textStream，需显式捕获，
   // 否则只能报 "Empty response from model"，掩盖真实原因导致静默降级。
   let streamError: unknown;
+  const callId = newCallId();
+  const startedAt = Date.now();
   const result = streamText({
     model: provider(options.model),
     messages: options.messages,
     system: options.system,
     providerOptions: options.providerOptions,
     abortSignal: options.signal,
+    timeout: getTimeoutMs(),
     onError: (event) => {
       streamError = event.error;
     },
@@ -189,10 +233,29 @@ async function streamToString(options: {
     fullText += chunk;
   }
 
+  const usage = await safeUsage(result.usage);
+
   if (!fullText) {
-    if (streamError) throw streamError;
-    throw new Error("Empty response from model");
+    const failure = streamError ?? new Error("Empty response from model");
+    logCall({
+      id: callId,
+      model: options.model,
+      mode: "search",
+      ms: Date.now() - startedAt,
+      ok: false,
+      error: mapLlmError(failure),
+    });
+    throw failure;
   }
+
+  logCall({
+    id: callId,
+    model: options.model,
+    mode: "search",
+    ms: Date.now() - startedAt,
+    ok: true,
+    usage,
+  });
   return fullText;
 }
 
@@ -220,15 +283,38 @@ export async function chatComplete(
   const provider = getLlmProvider();
   if (!provider) throw new Error("LLM provider not available");
 
-  const { text } = await generateText({
-    model: provider(model),
-    messages,
-    system: options?.system,
-    abortSignal: options?.signal,
-  });
-
-  if (!text) throw new Error("Empty response from model");
-  return text;
+  const callId = newCallId();
+  const startedAt = Date.now();
+  try {
+    const { text, usage, finishReason } = await generateText({
+      model: provider(model),
+      messages,
+      system: options?.system,
+      abortSignal: options?.signal,
+      timeout: getTimeoutMs(),
+    });
+    if (!text) throw new Error("Empty response from model");
+    logCall({
+      id: callId,
+      model,
+      mode: "text",
+      ms: Date.now() - startedAt,
+      ok: true,
+      usage,
+      finishReason,
+    });
+    return text;
+  } catch (error) {
+    logCall({
+      id: callId,
+      model,
+      mode: "text",
+      ms: Date.now() - startedAt,
+      ok: false,
+      error: mapLlmError(error),
+    });
+    throw error;
+  }
 }
 
 /** 结构化输出（当前工程未使用，保留给后续 Agent 改造） */
@@ -307,11 +393,15 @@ export async function* chatStream(
   if (!provider) throw new Error("LLM provider not available");
 
   let streamError: unknown;
+  const model = resolveRequestModel(options?.model);
+  const callId = newCallId();
+  const startedAt = Date.now();
   const result = streamText({
-    model: provider(resolveRequestModel(options?.model)),
+    model: provider(model),
     messages,
     system: options?.system,
     abortSignal: options?.signal,
+    timeout: getTimeoutMs(),
     onError: (event) => {
       streamError = event.error;
     },
@@ -326,5 +416,23 @@ export async function* chatStream(
   }
 
   // 流式失败不抛异常，仅在无输出时补抛，保证调用方能拿到真实错误
-  if (!yielded && streamError) throw streamError;
+  if (!yielded && streamError) {
+    logCall({
+      id: callId,
+      model,
+      mode: "stream",
+      ms: Date.now() - startedAt,
+      ok: false,
+      error: mapLlmError(streamError),
+    });
+    throw streamError;
+  }
+  logCall({
+    id: callId,
+    model,
+    mode: "stream",
+    ms: Date.now() - startedAt,
+    ok: true,
+    usage: await safeUsage(result.usage),
+  });
 }

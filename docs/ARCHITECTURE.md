@@ -47,6 +47,9 @@ flowchart LR
 | `lib/forge/form-schema.ts` | React Hook Form Zod schema 与 resolver |
 | `lib/forge/keyword-extractor.ts` | nodejieba 关键词提取（TF-IDF + 停用词过滤） |
 | `lib/forge/visual-normalize.ts` | 视觉 JSON 容错补齐（含去水印、playbook 长度） |
+| `lib/forge/quality-gate.ts` | 确定性质量门：合规/AI 味/数字事实核对（覆盖 LLM 自评） |
+| `lib/forge/run-store.ts` | 最近一次 Execute 结果快照（localStorage，刷新可恢复） |
+| `lib/forge/strategy-learner.ts` | 互动数据 → 爆款判定 → ICL few-shot（回流文案 prompt） |
 | `lib/ai/prompts/` | 各 Agent system/user prompt |
 | `components/forge/` | UI 三栏与 Step 面板（Motion 动画 + RHF 表单） |
 | `hooks/use-forge-pipeline.ts` | 客户端 SSE 消费 |
