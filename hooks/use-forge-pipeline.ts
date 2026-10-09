@@ -9,6 +9,7 @@ import { filesToProductImages } from "@/lib/forge/image-client";
 import { formatAgentTime } from "@/lib/forge/agent-phases";
 import { DEFAULT_LLM_MODEL_ID, LLM_MODELS, resolveLlmModelId, type LlmModelOption } from "@/lib/ai/models";
 import { consumeSseStream } from "@/lib/forge/sse-client";
+import { loadRunSnapshot, saveRunSnapshot } from "@/lib/forge/run-store";
 import type {
   CriticReport,
   ForgeInput,
@@ -58,7 +59,10 @@ export function useForgePipeline() {
     step?: ForgeProgressStep;
     message: string;
   } | null>(null);
+  /** 上次执行用的输入（用于刷新后恢复 remix/engage 等依赖 lastInput 的功能） */
+  const [restoredInput, setRestoredInput] = useState<ForgeInput | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const lastRunInputRef = useRef<ForgeInput | null>(null);
 
   const appendLog = useCallback(
     (
@@ -100,6 +104,49 @@ export function useForgePipeline() {
       .catch(() => setMode("mock"));
   }, []);
 
+  // 刷新后恢复上一次 Execute 的结果（此前刷新即全部丢失）
+  useEffect(() => {
+    const snapshot = loadRunSnapshot();
+    if (!snapshot) return;
+    setProductBrief(snapshot.productBrief);
+    setViralBrief(snapshot.viralBrief);
+    setPrompts(snapshot.prompts);
+    setPromptsOptimized(snapshot.promptsOptimized);
+    setCopyText(snapshot.copyText);
+    setCritic(snapshot.critic);
+    setRestoredInput(snapshot.input);
+    setStatus("done");
+    appendLog(
+      `已恢复上次生成结果（${new Date(snapshot.savedAt).toLocaleString("zh-CN")}）`,
+      "info"
+    );
+  }, [appendLog]);
+
+  // 执行完成后落盘快照
+  useEffect(() => {
+    if (status !== "done" || !copyText) return;
+    const input = lastRunInputRef.current;
+    if (!input) return;
+    saveRunSnapshot({
+      savedAt: new Date().toISOString(),
+      input,
+      productBrief,
+      viralBrief,
+      prompts,
+      promptsOptimized,
+      copyText,
+      critic,
+    });
+  }, [
+    status,
+    copyText,
+    productBrief,
+    viralBrief,
+    prompts,
+    promptsOptimized,
+    critic,
+  ]);
+
   const reset = useCallback(() => {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -127,6 +174,8 @@ export function useForgePipeline() {
       abortRef.current = controller;
       const { signal } = controller;
 
+      lastRunInputRef.current = input;
+      setRestoredInput(null);
       setStatus("running");
       setProductBrief(null);
       setViralBrief(null);
@@ -267,6 +316,7 @@ export function useForgePipeline() {
   return {
     status,
     mode,
+    restoredInput,
     defaultModel,
     models,
     productBrief,

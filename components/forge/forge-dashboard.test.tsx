@@ -76,6 +76,34 @@ describe("ForgeDashboard · Step3 表单贯通", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    localStorage.clear();
+  });
+
+  it("刷新后能从本地快照恢复上次生成结果", async () => {
+    localStorage.setItem(
+      "hype-forge:last-run",
+      JSON.stringify({
+        savedAt: new Date().toISOString(),
+        input: {
+          trendId: "dewu-sneaker-heat",
+          productName: "AJ1 北卡蓝",
+          sellingPoints: "到手 749",
+          platform: "dewu",
+        },
+        productBrief: null,
+        viralBrief: null,
+        prompts: null,
+        promptsOptimized: false,
+        copyText: "## 标题\n恢复测试标题ABC",
+        critic: null,
+      })
+    );
+
+    render(<ForgeDashboard />);
+    // 文案经 markdown 渲染后文本节点可能被拆分，因此断言整体 textContent
+    await waitFor(() =>
+      expect(document.body.textContent).toContain("恢复测试标题ABC")
+    );
   });
 
   it("粘贴的商品名/卖点/链接会进入 /api/forge/run 请求体", async () => {

@@ -144,7 +144,13 @@ export function ForgeDashboard() {
     lastError,
     execute,
     cancel,
+    restoredInput,
   } = useForgePipeline();
+
+  // 刷新恢复上次结果时，同步 lastInput，保证 remix/engage 等仍可用
+  useEffect(() => {
+    if (restoredInput) setLastInput(restoredInput);
+  }, [restoredInput]);
 
   // 识图失败不阻断流水线（降级为纯文本），但必须显式告知用户，
   // 否则「Execute 完成」会让人误以为文案参考了图片。
