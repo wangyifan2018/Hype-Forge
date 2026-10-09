@@ -24,6 +24,8 @@ export function useTrendScan() {
   const [scannedTrends, setScannedTrends] = useState<HotTrendCard[]>([]);
   const [scanCached, setScanCached] = useState(false);
   const [searchedAt, setSearchedAt] = useState<string | null>(null);
+  /** true = 服务端联网失败，当前展示的是示例数据 */
+  const [fallback, setFallback] = useState(false);
 
   const scan = useCallback(async (params: TrendScanRequest, signal?: AbortSignal) => {
     setScanning(true);
@@ -48,6 +50,7 @@ export function useTrendScan() {
         fallback?: boolean;
         fallbackReason?: string;
       };
+      setFallback(Boolean(data.fallback));
       if (data.fallback) {
         toast.warning(
           `热点情报联网失败，已降级为示例数据${data.fallbackReason ? `：${data.fallbackReason}` : ""}`
@@ -73,6 +76,7 @@ export function useTrendScan() {
     scannedTrends,
     scanCached,
     searchedAt,
+    fallback,
     scan,
     setScannedTrends,
   };

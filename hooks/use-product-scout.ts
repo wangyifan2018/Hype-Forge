@@ -24,6 +24,8 @@ export function useProductScout() {
   const [leads, setLeads] = useState<HotProductLead[]>([]);
   const [scoutCached, setScoutCached] = useState(false);
   const [searchedAt, setSearchedAt] = useState<string | null>(null);
+  /** true = 服务端联网失败，当前展示的是示例数据 */
+  const [fallback, setFallback] = useState(false);
 
   const scout = useCallback(async (params: ScoutRequest, signal?: AbortSignal) => {
     setScouting(true);
@@ -48,6 +50,7 @@ export function useProductScout() {
         fallback?: boolean;
         fallbackReason?: string;
       };
+      setFallback(Boolean(data.fallback));
       if (data.fallback) {
         toast.warning(
           `爆款情报联网失败，已降级为示例数据${data.fallbackReason ? `：${data.fallbackReason}` : ""}`
@@ -65,5 +68,13 @@ export function useProductScout() {
     }
   }, []);
 
-  return { scouting, leads, scoutCached, searchedAt, scout, setLeads };
+  return {
+    scouting,
+    leads,
+    scoutCached,
+    searchedAt,
+    fallback,
+    scout,
+    setLeads,
+  };
 }

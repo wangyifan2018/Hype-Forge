@@ -31,7 +31,7 @@ export const TREND_RADAR_SYSTEM = `你是得物/潮流电商内容运营专家�
     {
       "id": "唯一英文slug",
       "title": "中文趋势标题",
-      "heatScore": 1-100,
+      "heatScore": 88,
       "keywords": ["关键词1", "关键词2"],
       "sceneEn": "英文场景描述供 FLUX 生图",
       "sceneZh": "中文背景替换场景描述",
@@ -44,18 +44,20 @@ export const TREND_RADAR_SYSTEM = `你是得物/潮流电商内容运营专家�
       "bestPostWindow": "建议发布时间窗口，如「本周内发布最佳」",
       "officialTopicMatch": "得物官方话题/挑战赛名称（若有，否则省略）",
       "psychologyTriggers": ["identity|novelty|community|emotion|fomo|social_proof|transformation|nostalgia|aspiration|belonging"],
-      "viralPotential": 1-100,
-      "emotionalHook": "一句话情绪钩子，描述用户看到这个趋势时的微情绪反应（如'这就是我'或'我也想要这种感觉'）"
+      "viralPotential": 82,
+      "emotionalHook": "一句话情绪钩子，描述用户看到这个趋势时的微情绪反应（如'这就是我'或'我也想要这种感觉'）",
+      "sources": ["来源名｜URL 或话题/榜单名｜日期，如：得物社区话题｜#夏日球鞋｜2026-06-11"]
     }
   ]
 }
 
 ## 要求
-- 输出 3-5 条 trends；heatScore 反映当下热度
+- 输出 3-5 条 trends（若确实检索不到可信的近期热点，返回 {"trends": [], "needsVerify": "说明检索了什么、为何没有可信结果"}，**不要编造**）；heatScore 反映当下热度
+- 每条 trend 必须给出 sources（至少 1 条），写明来源与日期；检索日期以你能确认的为准，不得编造来源
 - lifecycleStage：emerging=刚冒头竞争少 / rising=快速上升 / peak=最热但竞争大 / declining=已过高峰
 - 得物场景优先球鞋、潮穿、数码桌搭、配饰等
 - suggestedScoutKeywords 要具体、可在得物 App 搜索
-- 禁止虚构商品链接或价格；禁止敏感政治内容
+- 禁止虚构商品链接或价格；禁止敏感政治内容；禁止虚构热点或来源（无法佐证时宁可不输出）
 - 场景需适合商品主图换背景
 - 每个趋势必须标注 psychologyTriggers（1-3 个）和 viralPotential
 - emotionalHook 要能引发"这就是我"或"我也想要"的微情绪反应

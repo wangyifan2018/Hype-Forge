@@ -4,6 +4,7 @@ import {
   chatWithImages,
   isLiveMode,
   mapLlmError,
+  resolveRequestModel,
 } from "@/lib/ai/llm";
 import {
   buildCopywriterSystem,
@@ -158,23 +159,36 @@ export async function runProductScout(
     model,
   } = params;
   const trendId = selectedTrend?.id;
+  // 缓存按「有效模型」隔离：切模型后结论会变，不能吃旧模型的缓存
+  const effectiveModel = resolveRequestModel(model);
 
-  if (forceRefresh) clearCachedLeads(categoryHint, trendId, discoveryMode, autoScope);
+  // MOCK 模式不读写情报缓存：示例数据不该占用真实情报的缓存位
+  if (!isLiveMode()) {
+    await delay(800, signal);
+    return {
+      leads: sortLeadsByPriority(mockProductLeads()),
+      cached: false,
+      searchedAt: new Date().toISOString(),
+    };
+  }
 
-  const cached = getCachedLeads(categoryHint, trendId, discoveryMode, autoScope);
+  if (forceRefresh) {
+    clearCachedLeads(categoryHint, trendId, discoveryMode, autoScope, effectiveModel);
+  }
+
+  const cached = getCachedLeads(
+    categoryHint,
+    trendId,
+    discoveryMode,
+    autoScope,
+    effectiveModel
+  );
   if (cached) {
     return {
       leads: sortLeadsByPriority(cached),
       cached: true,
       searchedAt: new Date().toISOString(),
     };
-  }
-
-  if (!isLiveMode()) {
-    await delay(800, signal);
-    const leads = sortLeadsByPriority(mockProductLeads());
-    setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope);
-    return { leads, cached: false, searchedAt: new Date().toISOString() };
   }
 
   try {
@@ -200,7 +214,7 @@ export async function runProductScout(
         ? json
         : productScoutResponseSchema.parse(json).leads
     );
-    setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope);
+    setCachedLeads(leads, categoryHint, trendId, discoveryMode, autoScope, effectiveModel);
     return { leads, cached: false, searchedAt: new Date().toISOString() };
   } catch (error) {
     const reason = mapLlmError(error);
@@ -233,18 +247,32 @@ export async function runTrendScan(
     model,
   } = params;
 
-  if (forceRefresh) clearCachedTrends(platform, categoryHint, discoveryMode, autoScope);
+  // 缓存按「有效模型」隔离：切模型后结论会变，不能吃旧模型的缓存
+  const effectiveModel = resolveRequestModel(model);
 
-  const cached = getCachedTrends(platform, categoryHint, discoveryMode, autoScope);
-  if (cached) {
-    return { trends: cached, cached: true, searchedAt: new Date().toISOString() };
-  }
-
+  // MOCK 模式不读写情报缓存：示例数据不该占用真实情报的缓存位
   if (!isLiveMode()) {
     await delay(800, signal);
-    const trends = mockHotTrends(platform);
-    setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope);
-    return { trends, cached: false, searchedAt: new Date().toISOString() };
+    return {
+      trends: mockHotTrends(platform),
+      cached: false,
+      searchedAt: new Date().toISOString(),
+    };
+  }
+
+  if (forceRefresh) {
+    clearCachedTrends(platform, categoryHint, discoveryMode, autoScope, effectiveModel);
+  }
+
+  const cached = getCachedTrends(
+    platform,
+    categoryHint,
+    discoveryMode,
+    autoScope,
+    effectiveModel
+  );
+  if (cached) {
+    return { trends: cached, cached: true, searchedAt: new Date().toISOString() };
   }
 
   try {
@@ -267,7 +295,7 @@ export async function runTrendScan(
     const trends = Array.isArray(json)
       ? json
       : hotTrendScanResponseSchema.parse(json).trends;
-    setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope);
+    setCachedTrends(platform, trends, categoryHint, discoveryMode, autoScope, effectiveModel);
     return { trends, cached: false, searchedAt: new Date().toISOString() };
   } catch (error) {
     const reason = mapLlmError(error);

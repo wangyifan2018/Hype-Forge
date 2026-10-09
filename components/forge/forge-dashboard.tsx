@@ -109,12 +109,19 @@ export function ForgeDashboard() {
     engageTemplates,
   } = usePublishChecklistStore();
 
-  const { scanning, scannedTrends, scanCached, scan } = useTrendScan();
+  const {
+    scanning,
+    scannedTrends,
+    scanCached,
+    fallback: scanFallback,
+    scan,
+  } = useTrendScan();
   const {
     scouting,
     leads: productLeads,
     scoutCached,
     searchedAt: scoutSearchedAt,
+    fallback: scoutFallback,
     scout: scoutProducts,
   } = useProductScout();
   const {
@@ -796,6 +803,7 @@ export function ForgeDashboard() {
         scouting={scouting}
         scoutCached={scoutCached}
         scoutSearchedAt={scoutSearchedAt}
+        scoutFallback={scoutFallback}
         onApplyLead={handleApplyLead}
         productImages={productImages}
         onProductImagesChange={setProductImages}
@@ -831,11 +839,15 @@ export function ForgeDashboard() {
             <IntelRadarPanel
               className="h-full"
               title={intelRadarTitle}
-              subtitle={
+              subtitle={[
                 intelAutoScope === "open"
-                  ? "全站跨平台 · 抖音 / 小红书 / 得物"
-                  : `${workspaceCtx.categoryLabel} · ${mode === "live" ? "LIVE 联网" : "MOCK"}`
-              }
+                  ? "全站跨平台"
+                  : workspaceCtx.categoryLabel,
+                mode === "live" ? "LIVE 联网" : "MOCK",
+                scanFallback ? "已降级为示例数据" : "",
+              ]
+                .filter(Boolean)
+                .join(" · ")}
               phases={intelAgent.activePhases}
               phaseIndex={intelAgent.phaseIndex}
               insights={intelAgent.insights}

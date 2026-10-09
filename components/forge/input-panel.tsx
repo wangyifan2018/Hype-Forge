@@ -98,6 +98,8 @@ type InputPanelProps = {
   scouting: boolean;
   scoutCached: boolean;
   scoutSearchedAt: string | null;
+  /** true = 爆款情报联网失败，当前为示例数据 */
+  scoutFallback?: boolean;
   onApplyLead: (lead: HotProductLead) => void;
   productImages: ProductImageDraft[];
   onProductImagesChange: (images: ProductImageDraft[]) => void;
@@ -178,6 +180,7 @@ export function InputPanel({
   scouting,
   scoutCached,
   scoutSearchedAt,
+  scoutFallback,
   onApplyLead,
   productImages,
   onProductImagesChange,
@@ -338,6 +341,7 @@ export function InputPanel({
               {scoutSearchedAt && productLeads.length > 0 && (
                 <p className="text-[10px] text-terminal-muted">
                   爆款更新：{new Date(scoutSearchedAt).toLocaleString("zh-CN")}
+                  {scoutFallback ? " · ⚠ 示例数据（联网失败）" : ""}
                 </p>
               )}
 

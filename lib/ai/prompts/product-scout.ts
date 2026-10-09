@@ -30,7 +30,7 @@ export const PRODUCT_SCOUT_SYSTEM = `你是得物平台带货情报分析师，�
       "id": "英文slug",
       "name": "商品/品类名称（具体款型或系列）",
       "category": "球鞋/潮穿/数码/美妆等",
-      "heatScore": 1-100,
+      "heatScore": 88,
       "searchKeywords": ["得物搜索词1", "搜索词2"],
       "contentAngle": "一句话种草角度",
       "whyHot": "2-3句：为何此刻值得做（结合近期话题/季节/社区讨论，勿编造销量数字）",
@@ -41,7 +41,7 @@ export const PRODUCT_SCOUT_SYSTEM = `你是得物平台带货情报分析师，�
       "priority": "high|medium|low",
       "note": "非官方榜单；需在得物App内验证；图片与链接请手动获取",
       "psychologyTriggers": ["identity|novelty|community|emotion|fomo|social_proof|transformation|nostalgia|aspiration|belonging"],
-      "viralPotential": 1-100,
+      "viralPotential": 82,
       "emotionalHook": "一句话情绪钩子，描述用户看到这个单品时的微情绪反应（如'这就是我想要的'或'穿上这个我就是焦点'）"
     }
   ]

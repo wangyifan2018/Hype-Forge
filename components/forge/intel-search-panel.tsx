@@ -301,6 +301,11 @@ export function IntelSearchPanel({
                   {t.whyNow && (
                     <p className="mt-0.5 text-terminal-muted">{t.whyNow}</p>
                   )}
+                  {t.sources && t.sources.length > 0 && (
+                    <p className="mt-0.5 truncate text-[8px] text-terminal-muted/80">
+                      来源：{t.sources.slice(0, 2).join("；")}
+                    </p>
+                  )}
                   {t.bestPostWindow && (
                     <p className="mt-0.5 text-[9px] text-terminal-accent/90">
                       {t.bestPostWindow}

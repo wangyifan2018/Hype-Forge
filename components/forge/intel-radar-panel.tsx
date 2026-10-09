@@ -80,28 +80,29 @@ function InsightIconSvg({ icon, className }: { icon: InsightIcon; className?: st
   }
 }
 
-function TokenCounter({ active, delayMs }: { active: boolean; delayMs: number }) {
-  const [count, setCount] = useState(0);
-  const target = Math.max(10, delayMs * 12);
+/**
+ * 真实已用时。
+ * 此前这里是按阶段 delayMs 伪造的 "tokens" 计数（凭空编造遥测），
+ * 改为展示真实耗时，避免让卖家以为看到了用量数据。
+ */
+function ElapsedTimer({ active }: { active: boolean }) {
+  const [seconds, setSeconds] = useState(0);
 
   useEffect(() => {
     if (!active) {
-      setCount(0);
+      setSeconds(0);
       return;
     }
-    const step = Math.max(1, Math.floor(target / 30));
+    const startedAt = Date.now();
     const interval = setInterval(() => {
-      setCount((prev) => {
-        if (prev >= target) return target;
-        return prev + step + Math.floor(Math.random() * step);
-      });
-    }, 80);
+      setSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [active, target]);
+  }, [active]);
 
   return (
     <span className="font-mono tabular-nums text-terminal-accent">
-      {count.toLocaleString()}
+      {seconds}s
     </span>
   );
 }
@@ -525,7 +526,7 @@ export function IntelRadarPanel({
           {/* Source Flow */}
           <div className="shrink-0 border-b border-terminal-border/60 px-3 py-2">
             <p className="mb-1.5 text-[8px] uppercase tracking-widest text-terminal-muted">
-              数据源
+              数据源（模型联网归纳，非逐平台抓取）
             </p>
             <div className="flex flex-wrap gap-1.5">
               {SOURCE_ORDER.map((src) => {
@@ -664,11 +665,8 @@ export function IntelRadarPanel({
                       )}
                       {running && (
                         <div className="mt-2 flex items-center gap-1.5 text-[9px] text-terminal-muted">
-                          <span>tokens</span>
-                          <TokenCounter
-                            active={running}
-                            delayMs={current?.delayMs ?? 500}
-                          />
+                          <span>已用时</span>
+                          <ElapsedTimer active={running} />
                         </div>
                       )}
                     </>
