@@ -18,7 +18,8 @@ export type ComplianceViolation = {
 
 // 绝对化用语（广告法严禁）
 const ABSOLUTE_WORDS = [
-  { word: "最", type: "absolute" as const, severity: "high" as const },
+  // 注意：不要放裸「最」——会把「最近/最后/最初」判成绝对化用语，误报率极高；
+  // 广告法关注的是「最+形容词」构成的最高级表述，已在下文逐条列出。
   { word: "最佳", type: "absolute" as const, severity: "high" as const },
   { word: "最好", type: "absolute" as const, severity: "high" as const },
   { word: "最优", type: "absolute" as const, severity: "high" as const },

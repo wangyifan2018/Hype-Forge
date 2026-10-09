@@ -292,9 +292,34 @@ export const viralityCompositeSchema = z.object({
 
 export type ViralityComposite = z.infer<typeof viralityCompositeSchema>;
 
+/**
+ * 代码校验结果（compliance-check / anti-ai-detect 等确定性模块），
+ * 由服务端覆盖 LLM 自评的 complianceCheck / antiAiScore，
+ * 避免"生成者给自己打分"导致合规与反 AI 味这两项形同虚设。
+ */
+export const deterministicCriticSchema = z.object({
+  checkedBy: z.literal("code"),
+  compliancePass: z.boolean(),
+  complianceScore: z.number(),
+  antiAiScore: z.number(),
+  violations: z.array(
+    z.object({
+      word: z.string(),
+      severity: z.enum(["high", "medium", "low"]),
+      suggestion: z.string().optional(),
+    })
+  ),
+  /** 文案里出现但用户原文中不存在的数字（疑似编造价格/参数），需人工确认 */
+  fabricatedNumbers: z.array(z.string()),
+  issues: z.array(z.string()),
+});
+
+export type DeterministicCritic = z.infer<typeof deterministicCriticSchema>;
+
 export const criticReportSchema = z.object({
   scores: criticScoresSchema,
   mustFix: z.array(z.string()),
+  deterministic: deterministicCriticSchema.optional(),
   revisedCopy: z.string().optional(),
   revisedFluxEn: z.string().optional(),
   revisedBgRedrawZh: z.string().optional(),

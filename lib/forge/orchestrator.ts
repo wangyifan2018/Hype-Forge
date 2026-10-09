@@ -1,6 +1,7 @@
 import {
   runCopyDraft,
   runCritic,
+  runQualityGateFor,
   runVision,
   runViralBrief,
   runVisualPrompts,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/forge/service";
 import { ensureHashtagSection } from "@/lib/forge/copy-hashtags";
 import { mapLlmError } from "@/lib/ai/llm";
+import { applyGateToCritic } from "@/lib/forge/quality-gate";
 import { resolveTrend } from "@/lib/forge/trend-resolve";
 import { STEP_LABELS } from "@/lib/forge/pipeline-labels";
 import { buildCriticRevisionPrompt, CRITIC_SYSTEM } from "@/lib/ai/prompts/critic";
@@ -30,7 +32,7 @@ function applyCriticRevisions(
 ): ForgeState {
   const next = { ...state, critic };
   let visual = state.visual!;
-  let copyFinal = state.copyDraft ?? "";
+  const copyFinal = state.copyDraft ?? "";
 
   const shouldRevise = critic.mustFix.length > 0;
 
@@ -53,10 +55,8 @@ function applyCriticRevisions(
     next.promptsOptimized = true;
   }
 
-  if (shouldRevise && critic.revisedCopy?.trim()) {
-    copyFinal = critic.revisedCopy;
-  }
-
+  // 注意：critic.revisedCopy 不在这里直接替换终稿。
+  // 它是"未经复查的改写"，调用方会先跑确定性质量门，合规分不降低才采纳。
   next.copyFinal = copyFinal;
   return next;
 }
@@ -347,7 +347,6 @@ export async function* runForgePipeline(
       { ...state, copyDraft: currentCopy, visual },
       critic
     );
-    yield { type: "critic", data: critic };
 
     if (revised.promptsOptimized && revised.visual) {
       yield {
@@ -357,7 +356,31 @@ export async function* runForgePipeline(
       };
     }
 
-    let copyFinal = revised.copyFinal ?? currentCopy;
+    // 终稿选择：Critic 的内联改写必须先过代码校验，合规分不降低才采纳
+    // （此前会无条件替换终稿，等于把未复查的改写直接交付）
+    let copyFinal = currentCopy;
+    const proposed = critic.revisedCopy?.trim();
+    if (critic.mustFix.length > 0 && proposed && proposed !== currentCopy.trim()) {
+      const gateCurrent = runQualityGateFor(input, currentCopy);
+      const gateProposed = runQualityGateFor(input, proposed);
+      if (gateProposed.complianceScore >= gateCurrent.complianceScore) {
+        copyFinal = proposed;
+        yield {
+          type: "log",
+          step: "critic",
+          message: "已采纳 Critic 改写（通过代码校验）",
+          level: "info",
+        };
+      } else {
+        yield {
+          type: "log",
+          step: "critic",
+          message: "已忽略 Critic 改写：代码校验的合规分更低",
+          level: "warn",
+        };
+      }
+    }
+
     const trend = resolveTrend(input);
     const { text: withTags, patched } = ensureHashtagSection(copyFinal, [
       ...(trend.keywords ?? []),
@@ -372,6 +395,32 @@ export async function* runForgePipeline(
         level: "warn",
       };
     }
+
+    // 对"真正要交付的文案"（含自动补全内容）做最后一次代码校验，
+    // 让卖家看到的是实际风险而不是 LLM 自评
+    const finalGate = runQualityGateFor(input, copyFinal);
+    const finalCritic = applyGateToCritic(critic, finalGate);
+    if (!finalGate.compliancePass) {
+      const words = finalGate.violations
+        .filter((v) => v.severity === "high")
+        .map((v) => v.word)
+        .slice(0, 5)
+        .join("、");
+      yield {
+        type: "log",
+        step: "critic",
+        message: `⚠ 合规校验未通过（${words || "高风险词"}），发布前请手工修改`,
+        level: "warn",
+      };
+    } else if (finalGate.fabricatedNumbers.length > 0) {
+      yield {
+        type: "log",
+        step: "critic",
+        message: `事实核对：数字 ${finalGate.fabricatedNumbers.slice(0, 5).join("、")} 未出现在你粘贴的原文中，请确认是否为编造`,
+        level: "warn",
+      };
+    }
+    yield { type: "critic", data: finalCritic };
 
     for await (const chunk of streamTextChunks(copyFinal, call.signal)) {
       yield { type: "delta", text: chunk };

@@ -296,6 +296,51 @@ export function CopywriterTerminal({
                 </button>
                 {criticOpen && (
                   <div className="mt-2 space-y-2">
+                    {critic.deterministic && (
+                      <div className="rounded border border-terminal-border/70 bg-terminal-bg/50 p-2 text-[9px]">
+                        <p className="font-semibold text-terminal-muted">
+                          代码校验（合规 / 去 AI 味，不采信模型自评）
+                        </p>
+                        <p
+                          className={
+                            critic.deterministic.compliancePass
+                              ? "text-emerald-400"
+                              : "text-red-400"
+                          }
+                        >
+                          合规：
+                          {critic.deterministic.compliancePass
+                            ? "通过"
+                            : "未通过"}
+                          {critic.deterministic.violations.length > 0
+                            ? ` · ${critic.deterministic.violations
+                                .slice(0, 4)
+                                .map((v) => v.word)
+                                .join("、")}`
+                            : ""}
+                        </p>
+                        {critic.deterministic.fabricatedNumbers.length > 0 && (
+                          <p className="text-amber-400">
+                            原文未出现的数字：
+                            {critic.deterministic.fabricatedNumbers
+                              .slice(0, 6)
+                              .join("、")}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                    {critic.mustFix.length > 0 && (
+                      <div className="rounded border border-terminal-border/70 bg-terminal-bg/50 p-2 text-[9px]">
+                        <p className="font-semibold text-terminal-muted">
+                          待改进（{critic.mustFix.length}）
+                        </p>
+                        <ul className="mt-1 list-disc space-y-0.5 pl-4 text-foreground/80">
+                          {critic.mustFix.slice(0, 6).map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                     <ScoreBar label="Hook" value={critic.scores.hook} />
                     <ScoreBar label="Emotion" value={critic.scores.emotion} />
                     <ScoreBar
@@ -338,7 +383,9 @@ export function CopywriterTerminal({
                     )}
                     {critic.scores.antiAiScore != null && (
                       <ScoreBar
-                        label="去AI味"
+                        label={
+                          critic.deterministic ? "去AI味(代码)" : "去AI味"
+                        }
                         value={critic.scores.antiAiScore}
                       />
                     )}
@@ -350,7 +397,9 @@ export function CopywriterTerminal({
                     )}
                     {critic.scores.complianceCheck != null && (
                       <ScoreBar
-                        label="合规性"
+                        label={
+                          critic.deterministic ? "合规性(代码)" : "合规性"
+                        }
                         value={critic.scores.complianceCheck}
                       />
                     )}

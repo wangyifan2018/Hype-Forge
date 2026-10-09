@@ -45,6 +45,7 @@ import {
   VIRAL_PLANNER_SYSTEM,
 } from "@/lib/ai/prompts/viral-planner";
 import { extractJson } from "@/lib/forge/parse-json";
+import { applyGateToCritic, runQualityGate } from "@/lib/forge/quality-gate";
 import { normalizeVisualPrompts } from "@/lib/forge/visual-normalize";
 import { rankTitleCandidates } from "@/lib/forge/title-scorer";
 import { cleanCopyDraft } from "@/lib/forge/clean-copy";
@@ -445,6 +446,20 @@ export async function runCopyDraft(
   }
 }
 
+/**
+ * 对指定文案跑确定性质量门。
+ * 传入用户原文用于「数字事实核对」：文案里出现的数字必须能在原文中找到。
+ */
+export function runQualityGateFor(
+  input: ForgeInput,
+  copyDraft: string
+): ReturnType<typeof runQualityGate> {
+  const sourceText = [input.productName, input.sellingPoints, input.referenceCopy]
+    .filter(Boolean)
+    .join("\n");
+  return runQualityGate(copyDraft, { sourceText });
+}
+
 export async function runCritic(
   input: ForgeInput,
   copyDraft: string,
@@ -455,7 +470,7 @@ export async function runCritic(
 ): Promise<CriticReport> {
   if (!isLiveMode()) {
     await delay(500, options?.signal);
-    return {
+    const mockReport: CriticReport = {
       scores: {
         hook: 85,
         emotion: 88,
@@ -482,6 +497,7 @@ export async function runCritic(
         platformNative: 88,
       },
     };
+    return applyGateToCritic(mockReport, runQualityGateFor(input, copyDraft));
   }
 
   try {
@@ -494,7 +510,9 @@ export async function runCritic(
       ],
       { signal: options?.signal, system: CRITIC_SYSTEM, model: options?.model }
     );
-    return criticReportSchema.parse(extractJson(raw));
+    const report = criticReportSchema.parse(extractJson(raw));
+    // 合规 / 去 AI 味 / 真实感 / 数字事实核对一律以代码结论为准，覆盖 LLM 自评
+    return applyGateToCritic(report, runQualityGateFor(input, copyDraft));
   } catch (error) {
     throw new Error(mapLlmError(error));
   }
